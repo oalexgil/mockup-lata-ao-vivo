@@ -101,6 +101,14 @@ Ele devolve uma URL `https://algo.trycloudflare.com`. Abra no celular. O computa
 
 A imagem envolve os 360° do cilindro, então precisa ser larga e baixa — algo em torno de 1800×600 px. **A borda esquerda tem que emendar na direita**, senão aparece uma costura visível quando a lata gira. PNG ou JPG.
 
+### Espelhamento
+
+Webcam frontal normalmente entrega a imagem espelhada; câmera traseira de celular, não. O app detecta isso pelo `facingMode` da faixa de vídeo e liga o botão **Espelhar imagem** sozinho quando identifica uma câmera frontal. Se o `facingMode` não for informado, o que é comum em webcam de notebook, ele assume frontal.
+
+O teste é o texto: aponte para qualquer coisa escrita. Se estiver ao contrário, alterne o botão.
+
+O espelhamento é resolvido **na entrada**, não na exibição. O quadro é corrigido uma vez e detecção, rastreio de bordas, composição e o arraste do mouse consomem todos esse mesmo quadro. Se fosse aplicado só na tela, o rastreio trabalharia em coordenadas espelhadas em relação ao que você vê e o encaixe apareceria do lado errado.
+
 ### Preparando a cena
 
 Luz lateral funciona melhor que luz frontal: ela cria o gradiente de sombra na curvatura que a composição vai aproveitar. Fundo contrastante ajuda a detecção.
@@ -108,7 +116,7 @@ Luz lateral funciona melhor que luz frontal: ela cria o gradiente de sombra na c
 ### Passo a passo
 
 1. Abra a página e permita o acesso à câmera.
-2. Clique em **Escolher arte do rótulo** e selecione o arquivo.
+2. Clique em **Escolher arte do rótulo** e selecione o arquivo. Confira o espelhamento apontando para algo escrito.
 3. Aponte para a lata. O selo no canto superior esquerdo mostra o estado: procurando, detectada com o percentual de confiança, ou sem lata no quadro.
 4. Assim que travar, o rastreio de bordas assume e o detector para de rodar. O selo passa a mostrar confiança do contorno e a inclinação estimada.
 5. Se errar ou oscilar, você tem três saídas, da mais rápida para a mais precisa: **arraste direto na imagem**, clique em **Encaixar nas bordas agora**, ou use **Marcar 4 cantos** e clique nos quatro cantos da lata.
@@ -149,6 +157,10 @@ São duas etapas separadas, e essa separação é o ponto do projeto.
 **Rastreio por bordas.** Depois que o detector semeia uma região, todo o resto é visão clássica rodando a cada quadro numa janela de 200 px. Para cada linha, o gradiente horizontal mais forte de cada lado marca o contorno da lata; duas retas são ajustadas por mínimos quadrados com descarte iterativo de resíduos altos. Um segundo passe repete a busca numa faixa estreita ao redor das retas, o que rejeita a bagunça do fundo.
 
 Disso saem quatro coisas que a caixa delimitadora não fornece: centro exato, raio exato, **inclinação no plano da imagem** e a extensão vertical real do corpo.
+
+**Topo e base por colapso de suporte.** A partir do miolo, o algoritmo caminha linha a linha para cima e para baixo perguntando se as duas laterais ainda existem na faixa estreita das retas ajustadas. Enquanto existem, ainda é lata; quando somem por quatro linhas seguidas, o corpo acabou. Isso usa a mesma evidência que tornou o ajuste lateral confiável e ignora bagunça de fundo acima ou abaixo do objeto — parede, pano, braço, móvel.
+
+**Guardas de sanidade.** Todo encaixe candidato precisa ter proporção de corpo entre 1:1 e 4:1, caber no quadro, e não pular mais de 30% em altura ou raio em relação ao encaixe travado. Sem isso um encaixe inflado aumenta o recorte, o recorte maior desloca o ajuste das retas, e o rastreio entra num laço do qual não sai — travado, confiante e errado.
 
 **Elevação da câmera.** No topo da lata, a borda superior forma uma elipse. A distância entre o ponto mais alto no centro e a altura da borda nas laterais é o semi-eixo menor dessa elipse. Como `b = r · sen θ`, um arco-seno devolve o ângulo de elevação da câmera, aplicado direto na inclinação do cilindro. A altura do corpo sai de `h = (projeção − 2r·sen θ) / cos θ`, descontando a saliência das duas elipses.
 
@@ -210,6 +222,10 @@ Suavização temporal. Menor estabiliza mais e responde mais devagar.
 **O contorno agarra no fundo.** Sensibilidade alta demais ou fundo muito texturizado. Suba a sensibilidade e reposicione contra um fundo mais limpo.
 
 **A inclinação fica errada.** O topo da lata está fora do quadro ou encoberto, então a elipse não é medida. Desligue **inclinação automática** e use o controle de inclinação no ajuste fino.
+
+**O encaixe ficou gigante e não volta.** Clique em **Procurar a lata de novo**, que zera o encaixe antes de redetectar. Um encaixe inflado alimenta a si mesmo através do recorte, então reiniciar é mais rápido do que tentar corrigir no arraste.
+
+**Fundo com pano, quadro ou móvel atrás da lata.** Prefira a metade inferior do quadro e um fundo liso. O rastreio tolera bem bagunça acima e abaixo da lata, mas linhas verticais fortes logo ao lado dela competem com o contorno.
 
 **O rótulo fica escuro demais.** Aumente o ganho de luz. Lata escura ou pouca iluminação puxam o resultado para baixo.
 

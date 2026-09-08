@@ -113,6 +113,8 @@
         <button id="srcPhoto" aria-pressed="false">Foto</button>
       </div>
       <input type="file" id="photoFile" accept="image/*">
+      <button id="btnFlip" aria-pressed="false">Espelhar imagem</button>
+      <p class="hint">Ligue se o texto da lata aparecer invertido. Webcam frontal costuma entregar a imagem espelhada.</p>
     </fieldset>
 
     <fieldset>
@@ -199,7 +201,7 @@ import { ObjectDetector, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@m
 /* ===================== estado ===================== */
 const S = {
   source:'cam', mode:'auto', blend:'label',
-  autoSpin:false, autoTilt:true, debug:false, frozen:false,
+  autoSpin:false, autoTilt:true, debug:false, frozen:false, flip:false,
   widthF:1, heightF:1, spin:0, tiltOff:0, rollOff:0, alpha:1, light:1.5, edgeThr:14,
   fit:null, fitTarget:null,
   locked:false, lastGood:0, lastDetect:0, conf:0,
@@ -216,13 +218,25 @@ const display=document.getElementById('display');
 const dctx=display.getContext('2d');
 const fx=document.createElement('canvas'), fctx=fx.getContext('2d');
 const roi=document.createElement('canvas'), rctx=roi.getContext('2d',{willReadFrequently:true});
+const base=document.createElement('canvas'), bctx=base.getContext('2d');
 const msg=document.getElementById('msg'), badge=document.getElementById('badge');
 const badgeText=document.getElementById('badgeText'), dot=document.getElementById('dot');
 const $=id=>document.getElementById(id);
 
 let photoImg=null, frozenFrame=null, srcW=0, srcH=0, detector=null, modelName='';
 
-function source(){ return S.frozen ? frozenFrame : (S.source==='photo' ? photoImg : video); }
+// Quadro de trabalho: espelhamento resolvido UMA vez, na entrada.
+// Detecção, rastreio, composição e ponteiro operam todos neste mesmo espaço.
+function paintBase(){
+  const raw = S.frozen ? frozenFrame
+            : (S.source==='photo' ? photoImg : (video.videoWidth ? video : null));
+  if(!raw) return false;
+  bctx.setTransform(1,0,0,1,0,0);
+  if(S.flip && !S.frozen && S.source==='cam'){ bctx.translate(srcW,0); bctx.scale(-1,1); }
+  bctx.drawImage(raw,0,0,srcW,srcH);
+  bctx.setTransform(1,0,0,1,0,0);
+  return true;
+}
 
 /* ===================== three.js ===================== */
 const glCanvas=document.createElement('canvas');
@@ -259,6 +273,10 @@ async function startCamera(){
       video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
     video.srcObject=stream; await video.play();
     await new Promise(r=>{ if(video.videoWidth) r(); else video.onloadedmetadata=r; });
+    // frontal chega espelhada na maioria das webcams; traseira de celular nao
+    const st=stream.getVideoTracks()[0]?.getSettings?.()||{};
+    S.flip = st.facingMode ? st.facingMode==='user' : true;
+    press($('btnFlip'),S.flip);
     setSize(video.videoWidth,video.videoHeight);
     msg.classList.add('hidden'); badge.classList.remove('hidden');
     loadDetector();
@@ -270,7 +288,7 @@ async function startCamera(){
 
 function setSize(w,h){
   srcW=w; srcH=h;
-  display.width=w; display.height=h; fx.width=w; fx.height=h;
+  display.width=w; display.height=h; fx.width=w; fx.height=h; base.width=w; base.height=h;
   renderer.setSize(w,h,false);
   camera=new THREE.OrthographicCamera(-w/2,w/2,h/2,-h/2,-5000,5000);
   camera.position.z=100;
@@ -311,7 +329,7 @@ function detect(now){
   if(video.currentTime===lastVideoTime) return;
   lastVideoTime=video.currentTime; S.lastDetect=now;
 
-  let res; try{ res=detector.detectForVideo(video,now); }catch(e){ return; }
+  let res; try{ res=detector.detectForVideo(base,now); }catch(e){ return; }
 
   let best=null;
   for(const d of (res.detections||[])){
@@ -366,10 +384,14 @@ function fitLine(ys,xs){
   return {a,b,inl:idx.length/n};
 }
 
-function refine(f){
-  const src=source(); if(!src||!f) return null;
-  const pad=0.20;
-  const bw=f.r*2*1.3, bh=f.h*1.15;
+function refine(f,loose){
+  if(!f||!base.width) return null;
+  const src=base;
+
+  // recorte limitado: impede que um encaixe inflado alimente a si mesmo
+  const pad=0.22;
+  const bw=Math.min(srcW*0.85, f.r*2*1.35);
+  const bh=Math.min(srcH*0.90, f.h*1.20);
   let x0=f.cx-bw*(0.5+pad), y0=f.cy-bh*(0.5+pad);
   let w0=bw*(1+2*pad), h0=bh*(1+2*pad);
   x0=Math.max(0,x0); y0=Math.max(0,y0);
@@ -384,7 +406,7 @@ function refine(f){
   for(let i=0,p=0;i<d.length;i+=4,p++) g[p]=d[i]*0.299+d[i+1]*0.587+d[i+2]*0.114;
 
   const thr=S.edgeThr;
-  const y1=Math.round(rh*0.24), y2=Math.round(rh*0.76);
+  const y1=Math.round(rh*0.32), y2=Math.round(rh*0.68);
   if(y2-y1<10) return null;
   const mid=RW>>1;
 
@@ -426,49 +448,81 @@ function refine(f){
   const rr=widths[widths.length>>1]/2;
   if(rr<RW*0.06) return null;
 
-  // topo e base: primeira borda horizontal forte, varrendo de fora para dentro
-  const ymid=(y1+y2)/2;
-  const scanTop=col=>{
-    const x=Math.round(col); if(x<3||x>RW-4) return null;
-    for(let y=3;y<ymid;y++){
-      if(Math.abs(g[(y+3)*RW+x]-g[(y-3)*RW+x])>thr) return y;
+  // TOPO E BASE POR COLAPSO DE SUPORTE
+  // Caminha a partir do miolo. Enquanto as duas laterais continuam existindo
+  // na faixa estreita das retas, ainda é lata. Quando somem por algumas linhas
+  // seguidas, acabou o corpo. Imune a bagunça de fundo acima ou abaixo — que é
+  // exatamente o que quebrava a varredura de fora para dentro.
+  const band2=Math.round(RW*0.06), thr2=thr*0.7;
+  const support=y=>{
+    if(y<4||y>=rh-4) return false;
+    const row=y*RW;
+    const el=Math.round(L.a*y+L.b), er=Math.round(R.a*y+R.b);
+    let bv=0,brv=0;
+    for(let x=Math.max(3,el-band2);x<=Math.min(RW-4,el+band2);x++){
+      const gx=Math.abs(g[row+x+3]-g[row+x-3]); if(gx>bv)bv=gx;
     }
-    return null;
-  };
-  const scanBot=col=>{
-    const x=Math.round(col); if(x<3||x>RW-4) return null;
-    for(let y=rh-4;y>ymid;y--){
-      if(Math.abs(g[Math.min(rh-1,y+3)*RW+x]-g[(y-3)*RW+x])>thr) return y;
+    for(let x=Math.max(3,er-band2);x<=Math.min(RW-4,er+band2);x++){
+      const gx=Math.abs(g[row+x+3]-g[row+x-3]); if(gx>brv)brv=gx;
     }
-    return null;
+    return bv>thr2&&brv>thr2;
   };
+  const GAP=4;
+  let yTop=y1, miss=0;
+  for(let y=y1;y>=4;y--){ if(support(y)){ yTop=y; miss=0; } else if(++miss>=GAP) break; }
+  let yBot=y2; miss=0;
+  for(let y=y2;y<rh-4;y++){ if(support(y)){ yBot=y; miss=0; } else if(++miss>=GAP) break; }
+  if(yBot-yTop<rh*0.18) return null;
 
-  const tC=scanTop(ax(y1));
-  const tL=scanTop(ax(y1)-rr*0.68), tR=scanTop(ax(y1)+rr*0.68);
-  const bC=scanBot(ax(y2));
-  if(tC==null||bC==null||bC-tC<rh*0.25) return null;
-
-  // flecha da elipse do topo -> ângulo de elevação
-  let tilt=S.fit?S.fit.tilt:0.12;
-  if(S.autoTilt&&tL!=null&&tR!=null){
-    const sag=((tL+tR)/2)-tC;
-    tilt=Math.asin(Math.max(-0.95,Math.min(0.95,sag/rr)));
+  // flecha da elipse do topo, medida só numa janela ao redor do topo já achado
+  let tilt=f.tilt;
+  if(S.autoTilt){
+    const win=Math.max(4,Math.round(rr*1.1));
+    const topAt=col=>{
+      const x=Math.round(col); if(x<3||x>RW-4) return null;
+      let bestY=null,bv=0;
+      for(let y=Math.max(4,yTop-win);y<=Math.min(rh-5,yTop+win);y++){
+        const gy=Math.abs(g[(y+3)*RW+x]-g[(y-3)*RW+x]);
+        if(gy>bv){bv=gy;bestY=y;}
+      }
+      return bv>thr2?bestY:null;
+    };
+    const c0=ax(yTop), tC=topAt(c0), tL=topAt(c0-rr*0.7), tR=topAt(c0+rr*0.7);
+    if(tC!=null&&tL!=null&&tR!=null){
+      const sag=((tL+tR)/2)-tC;
+      if(sag>=-rr*0.15&&sag<rr*0.75) tilt=Math.asin(Math.max(0,Math.min(0.72,sag/rr)));
+    }
   }
+
   // altura do corpo, descontando a saliência das elipses
-  const proj=bC-tC;
-  const hBody=(proj-2*rr*Math.abs(Math.sin(tilt)))/Math.max(0.35,Math.cos(tilt));
-  if(hBody<rh*0.15) return null;
+  const proj=yBot-yTop;
+  const hBody=(proj-2*rr*Math.abs(Math.sin(tilt)))/Math.max(0.5,Math.cos(tilt));
+  if(hBody<rh*0.12) return null;
 
   const k=w0/RW;
-  return {
-    cx:x0+ax((tC+bC)/2)*k,
-    cy:y0+((tC+bC)/2)*k,
+  const out={
+    cx:x0+ax((yTop+yBot)/2)*k,
+    cy:y0+((yTop+yBot)/2)*k,
     r:rr*k,
     h:hBody*k,
     roll:Math.atan(slope),
     tilt,
     conf:Math.min(L.inl,R.inl)
   };
+
+  // GUARDAS DE SANIDADE
+  // proporção plausível de corpo cilíndrico
+  const aspect=out.h/(2*out.r);
+  if(aspect<1.0||aspect>4.0) return null;
+  if(out.h>srcH*0.95||out.r*2>srcW*0.8) return null;
+  // salto brusco em relação ao encaixe atual: recusa em vez de deixar escapar
+  if(!loose){
+    const tol=S.locked?0.30:0.85;
+    if(Math.abs(out.h-f.h)/Math.max(1,f.h)>tol) return null;
+    if(Math.abs(out.r-f.r)/Math.max(1,f.r)>tol) return null;
+  }
+  out.aspect=aspect;
+  return out;
 }
 
 /* ===================== loop ===================== */
@@ -481,6 +535,7 @@ function ema(o,n,k){
 function loop(now){
   requestAnimationFrame(loop);
   if(!srcW||!S.fit) return;
+  if(!paintBase()) return;
 
   detect(now);
 
@@ -490,7 +545,7 @@ function loop(now){
       ema(S.fit,r,0.35);
       S.locked=true; S.lastGood=now; S.conf=r.conf;
       dot.className='dot live';
-      badgeText.textContent=`travado ${Math.round(r.conf*100)}% · ${modelName} · incl ${Math.round(S.fit.tilt*57.3)}°`;
+      badgeText.textContent=`travado ${Math.round(r.conf*100)}% · ${r.aspect.toFixed(1)}:1 · incl ${Math.round(S.fit.tilt*57.3)}°`;
     }else if(now-S.lastGood>700){
       S.locked=false; dot.className='dot lost';
       badgeText.textContent='sem borda estável — procurando';
@@ -514,9 +569,8 @@ function loop(now){
   labelMesh.visible=S.hasArt;
   renderer.render(scene,camera);
 
-  const src=source(); if(!src) return;
   dctx.globalCompositeOperation='source-over'; dctx.globalAlpha=1; dctx.filter='none';
-  dctx.drawImage(src,0,0,srcW,srcH);
+  dctx.drawImage(base,0,0,srcW,srcH);
 
   if(S.hasArt){
     if(S.blend==='label'){
@@ -525,7 +579,7 @@ function loop(now){
       fctx.drawImage(glCanvas,0,0,srcW,srcH);
       fctx.globalCompositeOperation='multiply';
       fctx.filter=`grayscale(1) brightness(${S.light})`;
-      fctx.drawImage(src,0,0,srcW,srcH);
+      fctx.drawImage(base,0,0,srcW,srcH);
       fctx.filter='none';
       fctx.globalCompositeOperation='destination-in';
       fctx.drawImage(glCanvas,0,0,srcW,srcH);
@@ -610,11 +664,14 @@ $('modeManual').onclick=()=>setMode('manual');
 
 $('btnReseed').onclick=()=>{
   S.locked=false; S.corners=null; S.lastDetect=0; display.classList.remove('picking');
+  // zera o encaixe: um recorte inflado se realimenta e nunca se recupera sozinho
+  S.fit={cx:srcW/2,cy:srcH/2,r:srcW*0.08,h:srcH*0.38,roll:0,tilt:0.12};
+  S.fitTarget={...S.fit};
   setMode('auto'); badgeText.textContent='procurando lata · '+(modelName||'—');
 };
 
 $('btnSnap').onclick=()=>{
-  const r=refine(S.fit);
+  const r=refine(S.fit,true);
   if(r){ S.fit={...r}; S.fitTarget={...r};
     badgeText.textContent=`encaixado ${Math.round(r.conf*100)}%`; dot.className='dot live'; }
   else badgeText.textContent='bordas fracas — mexa na sensibilidade';
@@ -625,6 +682,10 @@ $('btnCorners').onclick=()=>{
   badgeText.textContent='clique: topo-esq, topo-dir, base-dir, base-esq';
 };
 
+$('btnFlip').onclick=e=>{
+  S.flip=!S.flip; press(e.currentTarget,S.flip);
+  S.locked=false; S.lastDetect=0;   // o encaixe anterior vale para o outro sentido
+};
 $('btnAutoTilt').onclick=e=>{ S.autoTilt=!S.autoTilt; press(e.currentTarget,S.autoTilt); };
 $('btnDebug').onclick=e=>{ S.debug=!S.debug; press(e.currentTarget,S.debug); };
 $('btnAutoSpin').onclick=e=>{ S.autoSpin=!S.autoSpin; press(e.currentTarget,S.autoSpin); };
@@ -656,7 +717,7 @@ $('blendSolid').onclick=()=>setBlend('solid');
 $('btnFreeze').onclick=e=>{
   if(!S.frozen){
     const c=document.createElement('canvas'); c.width=srcW; c.height=srcH;
-    c.getContext('2d').drawImage(source(),0,0,srcW,srcH);
+    c.getContext('2d').drawImage(base,0,0,srcW,srcH);
     frozenFrame=c; S.frozen=true; e.currentTarget.textContent='Voltar ao vivo';
     badgeText.textContent='imagem congelada';
   }else{ S.frozen=false; e.currentTarget.textContent='Congelar imagem'; }
