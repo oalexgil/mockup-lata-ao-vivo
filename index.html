@@ -15,7 +15,7 @@
     --line:#2a3236;
     --ink:#e9eef0;
     --ink-dim:#8b979c;
-    --steel:#00e0ff;          /* cyan elétrico — acento */
+    --steel:#00e0ff;
     --steel-dim:#0a7f92;
     --ok:#3ecf8e;
     --warn:#e0a92b;
@@ -30,17 +30,13 @@
   }
   .app{display:grid;grid-template-columns:320px 1fr;height:100vh;height:100dvh}
 
-  /* ---------- rail ---------- */
-  .rail{
-    background:var(--panel);border-right:1px solid var(--line);
-    overflow-y:auto;padding:20px 20px 40px;
-  }
+  .rail{background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding:20px 20px 44px}
   .brand{margin:0 0 2px;font-size:19px;font-weight:700;letter-spacing:-0.02em}
   .brand-sub{margin:0 0 22px;color:var(--ink-dim);font-size:12.5px}
 
   fieldset{border:0;border-top:1px solid var(--line);margin:0 0 4px;padding:16px 0 4px}
   fieldset:first-of-type{border-top:0;padding-top:0}
-  legend{padding:0 8px 0 0;font-size:12.5px;font-weight:600;color:var(--steel)}
+  legend{padding:0 8px 0 0;font-size:12.5px;font-weight:700;color:var(--steel)}
 
   label.row{display:block;margin:12px 0 0}
   .row-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:5px}
@@ -57,8 +53,8 @@
   }
   button:hover,.filebtn:hover{border-color:var(--steel-dim)}
   button:focus-visible,.filebtn:focus-visible{outline:2px solid var(--steel);outline-offset:2px}
-  button.primary{background:var(--steel);color:#141414;border-color:var(--steel);font-weight:600}
-  button[aria-pressed=true]{background:var(--steel);color:#141414;border-color:var(--steel)}
+  button.primary{background:var(--steel);color:#08191d;border-color:var(--steel);font-weight:700}
+  button[aria-pressed=true]{background:var(--steel);color:#08191d;border-color:var(--steel);font-weight:700}
 
   .seg{display:flex;gap:0;margin-top:8px}
   .seg button{margin-top:0;border-radius:0}
@@ -66,15 +62,15 @@
   .seg button:last-child{border-radius:0 3px 3px 0;border-left:0}
 
   .hint{margin:10px 0 0;font-size:12px;color:var(--ink-dim)}
-  .hint code{background:var(--panel-2);padding:1px 5px;border-radius:2px;font-size:11.5px}
+  .hint code{background:var(--panel-2);padding:1px 5px;border-radius:2px;font-family:var(--mono);font-size:11px}
 
-  /* ---------- stage ---------- */
-  .stage{position:relative;display:flex;align-items:center;justify-content:center;background:#0d0d0d;overflow:hidden}
+  .stage{position:relative;display:flex;align-items:center;justify-content:center;background:#07090a;overflow:hidden}
   #display{max-width:100%;max-height:100%;display:block;touch-action:none;cursor:grab}
   #display.dragging{cursor:grabbing}
+  #display.picking{cursor:crosshair}
   .badge{
     position:absolute;top:14px;left:14px;display:flex;align-items:center;gap:8px;
-    background:rgba(20,20,20,.82);border:1px solid var(--line);border-radius:3px;
+    background:rgba(12,15,16,.86);border:1px solid var(--line);border-radius:3px;
     padding:6px 11px;font-family:var(--mono);font-size:11.5px;color:var(--ink-dim);
     backdrop-filter:blur(6px);
   }
@@ -83,15 +79,15 @@
   .dot.lost{background:var(--warn)}
   .msg{
     position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-    max-width:min(420px,80vw);text-align:center;color:var(--ink-dim);font-size:14px;line-height:1.6;
+    max-width:min(430px,80vw);text-align:center;color:var(--ink-dim);font-size:14px;line-height:1.6;
   }
-  .msg strong{display:block;color:var(--ink);font-size:16px;margin-bottom:6px;font-weight:600}
+  .msg strong{display:block;color:var(--ink);font-size:16px;margin-bottom:6px;font-weight:700}
   .hidden{display:none!important}
 
   @media (max-width:820px){
     .app{grid-template-columns:1fr;grid-template-rows:1fr auto}
-    .stage{min-height:45vh}
-    .rail{border-right:0;border-top:1px solid var(--line);max-height:52vh}
+    .stage{min-height:44vh}
+    .rail{border-right:0;border-top:1px solid var(--line);max-height:54vh}
   }
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
@@ -107,7 +103,7 @@
       <legend>Arte</legend>
       <label class="filebtn" for="artFile" tabindex="0">Escolher arte do rótulo</label>
       <input type="file" id="artFile" accept="image/*">
-      <p class="hint">A imagem envolve os 360° da lata. Proporção ideal em torno de 3:1 (larga e baixa).</p>
+      <p class="hint">A imagem envolve os 360° da lata. Proporção ideal em torno de 3:1, com as bordas emendando.</p>
     </fieldset>
 
     <fieldset>
@@ -120,28 +116,45 @@
     </fieldset>
 
     <fieldset>
-      <legend>Posicionamento</legend>
+      <legend>Encaixe</legend>
       <div class="seg">
-        <button id="modeAuto" aria-pressed="true">Detectar lata</button>
+        <button id="modeAuto" aria-pressed="true">Automático</button>
         <button id="modeManual" aria-pressed="false">Manual</button>
       </div>
-      <p class="hint" id="posHint">Aponte para uma lata ou garrafa. Arraste na imagem para corrigir.</p>
+      <button id="btnReseed">Procurar a lata de novo</button>
+      <button id="btnSnap">Encaixar nas bordas agora</button>
+      <button id="btnCorners">Marcar 4 cantos</button>
+      <p class="hint" id="posHint">O detector encontra a lata uma vez; depois o rastreio de bordas assume e mantém o encaixe.</p>
 
       <label class="row">
+        <span class="row-head"><span>Sensibilidade de borda</span><span class="val" id="vEdge">14</span></span>
+        <input type="range" id="sEdge" min="5" max="40" step="1" value="14">
+      </label>
+      <button id="btnAutoTilt" aria-pressed="true">Inclinação automática</button>
+      <button id="btnDebug" aria-pressed="false">Mostrar rastreio</button>
+    </fieldset>
+
+    <fieldset>
+      <legend>Ajuste fino</legend>
+      <label class="row">
         <span class="row-head"><span>Largura</span><span class="val" id="vWidth">1.00</span></span>
-        <input type="range" id="sWidth" min="0.3" max="2.5" step="0.01" value="1">
+        <input type="range" id="sWidth" min="0.5" max="1.8" step="0.01" value="1">
       </label>
       <label class="row">
         <span class="row-head"><span>Altura</span><span class="val" id="vHeight">1.00</span></span>
-        <input type="range" id="sHeight" min="0.2" max="2" step="0.01" value="1">
+        <input type="range" id="sHeight" min="0.5" max="1.8" step="0.01" value="1">
       </label>
       <label class="row">
-        <span class="row-head"><span>Giro</span><span class="val" id="vSpin">0°</span></span>
+        <span class="row-head"><span>Giro do rótulo</span><span class="val" id="vSpin">0°</span></span>
         <input type="range" id="sSpin" min="-180" max="180" step="1" value="0">
       </label>
       <label class="row">
-        <span class="row-head"><span>Inclinação</span><span class="val" id="vTilt">0°</span></span>
-        <input type="range" id="sTilt" min="-25" max="25" step="1" value="0">
+        <span class="row-head"><span>Inclinação ±</span><span class="val" id="vTilt">0°</span></span>
+        <input type="range" id="sTilt" min="-30" max="30" step="1" value="0">
+      </label>
+      <label class="row">
+        <span class="row-head"><span>Rotação ±</span><span class="val" id="vRoll">0°</span></span>
+        <input type="range" id="sRoll" min="-25" max="25" step="1" value="0">
       </label>
       <button id="btnAutoSpin" aria-pressed="false">Girar sozinho</button>
     </fieldset>
@@ -153,7 +166,6 @@
         <button id="blendSolid" aria-pressed="false">Lata 3D</button>
       </div>
       <p class="hint" id="blendHint">A arte é multiplicada pela luz do vídeo, então herda sombra e curvatura da lata real.</p>
-
       <label class="row">
         <span class="row-head"><span>Intensidade</span><span class="val" id="vAlpha">100%</span></span>
         <input type="range" id="sAlpha" min="0" max="1" step="0.01" value="1">
@@ -184,314 +196,520 @@
 <script type="module">
 import { ObjectDetector, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
 
-/* ============ estado ============ */
+/* ===================== estado ===================== */
 const S = {
-  source:'cam',           // cam | photo
-  mode:'auto',            // auto | manual
-  blend:'label',          // label | solid
-  autoSpin:false,
-  frozen:false,
-  widthF:1, heightF:1, spin:0, tilt:0, alpha:1, light:1.5,
-  // caixa em pixels da imagem: cx, cy, w, h
-  box:null, target:null, hasArt:false, detecting:false, lastSeen:0
+  source:'cam', mode:'auto', blend:'label',
+  autoSpin:false, autoTilt:true, debug:false, frozen:false,
+  widthF:1, heightF:1, spin:0, tiltOff:0, rollOff:0, alpha:1, light:1.5, edgeThr:14,
+  fit:null, fitTarget:null,
+  locked:false, lastGood:0, lastDetect:0, conf:0,
+  corners:null, hasArt:false
 };
-const CLASSES = new Set(['bottle','cup','wine glass','vase','can']);
+const CLASSES = new Set(['bottle','cup','wine glass','vase','can','bowl']);
+const MODELS = [
+  ["Lite2","https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite2/float32/1/efficientdet_lite2.tflite"],
+  ["Lite0","https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float32/1/efficientdet_lite0.tflite"]
+];
 
-const video = document.getElementById('video');
-const display = document.getElementById('display');
-const dctx = display.getContext('2d');
-const fx = document.createElement('canvas');
-const fctx = fx.getContext('2d');
-const msg = document.getElementById('msg');
-const badge = document.getElementById('badge');
-const badgeText = document.getElementById('badgeText');
-const dot = document.getElementById('dot');
+const video=document.getElementById('video');
+const display=document.getElementById('display');
+const dctx=display.getContext('2d');
+const fx=document.createElement('canvas'), fctx=fx.getContext('2d');
+const roi=document.createElement('canvas'), rctx=roi.getContext('2d',{willReadFrequently:true});
+const msg=document.getElementById('msg'), badge=document.getElementById('badge');
+const badgeText=document.getElementById('badgeText'), dot=document.getElementById('dot');
+const $=id=>document.getElementById(id);
 
-let photoImg = null, srcW = 0, srcH = 0, detector = null, frozenFrame = null;
+let photoImg=null, frozenFrame=null, srcW=0, srcH=0, detector=null, modelName='';
 
-/* ============ three.js ============ */
-const glCanvas = document.createElement('canvas');
-const renderer = new THREE.WebGLRenderer({canvas:glCanvas, alpha:true, antialias:true, preserveDrawingBuffer:true});
+function source(){ return S.frozen ? frozenFrame : (S.source==='photo' ? photoImg : video); }
+
+/* ===================== three.js ===================== */
+const glCanvas=document.createElement('canvas');
+const renderer=new THREE.WebGLRenderer({canvas:glCanvas,alpha:true,antialias:true,preserveDrawingBuffer:true});
 renderer.setPixelRatio(1);
-renderer.outputEncoding = THREE.sRGBEncoding;
-const scene = new THREE.Scene();
-let camera = new THREE.OrthographicCamera(-1,1,1,-1,-5000,5000);
+renderer.outputEncoding=THREE.sRGBEncoding;
+const scene=new THREE.Scene();
+let camera=new THREE.OrthographicCamera(-1,1,1,-1,-5000,5000);
 
-const labelGeo = new THREE.CylinderGeometry(1,1,1,96,1,true);
-const bodyGeo  = new THREE.CylinderGeometry(1,1,1,96,1,false);
+const labelGeo=new THREE.CylinderGeometry(1,1,1,96,1,true);
+const bodyGeo=new THREE.CylinderGeometry(1,1,1,96,1,false);
+const matFlat=new THREE.MeshBasicMaterial({transparent:true,side:THREE.DoubleSide});
+const matLit=new THREE.MeshPhongMaterial({transparent:true,side:THREE.DoubleSide,shininess:26,specular:0x333333});
+const matBody=new THREE.MeshPhongMaterial({color:0xd6dade,shininess:70,specular:0x8a9096});
 
-const matFlat = new THREE.MeshBasicMaterial({transparent:true, side:THREE.DoubleSide});
-const matLit  = new THREE.MeshPhongMaterial({transparent:true, side:THREE.DoubleSide, shininess:26, specular:0x333333});
-const matBody = new THREE.MeshPhongMaterial({color:0xd6dade, shininess:70, specular:0x8a9096});
+const labelMesh=new THREE.Mesh(labelGeo,matFlat);
+const bodyMesh=new THREE.Mesh(bodyGeo,matBody);
+bodyMesh.visible=false;
 
-const labelMesh = new THREE.Mesh(labelGeo, matFlat);
-const bodyMesh  = new THREE.Mesh(bodyGeo, matBody);
-bodyMesh.visible = false;
-const group = new THREE.Group();
-group.add(bodyMesh); group.add(labelMesh);
-scene.add(group);
+// grupos aninhados: rotação na imagem -> elevação -> giro do rótulo
+const spinG=new THREE.Group(); spinG.add(bodyMesh); spinG.add(labelMesh);
+const tiltG=new THREE.Group(); tiltG.add(spinG);
+const rollG=new THREE.Group(); rollG.add(tiltG);
+scene.add(rollG);
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.62));
-const key = new THREE.DirectionalLight(0xffffff, 0.75); key.position.set(-1,1.1,2); scene.add(key);
-const fill = new THREE.DirectionalLight(0xffffff, 0.28); fill.position.set(1.4,-0.3,1); scene.add(fill);
+scene.add(new THREE.AmbientLight(0xffffff,0.62));
+const key=new THREE.DirectionalLight(0xffffff,0.75); key.position.set(-1,1.1,2); scene.add(key);
+const fill=new THREE.DirectionalLight(0xffffff,0.28); fill.position.set(1.4,-0.3,1); scene.add(fill);
 
-/* ============ câmera / fonte ============ */
+/* ===================== câmera / dimensões ===================== */
 async function startCamera(){
   try{
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video:{facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720}}, audio:false
-    });
-    video.srcObject = stream;
-    await video.play();
+    const stream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
+    video.srcObject=stream; await video.play();
     await new Promise(r=>{ if(video.videoWidth) r(); else video.onloadedmetadata=r; });
-    setSize(video.videoWidth, video.videoHeight);
+    setSize(video.videoWidth,video.videoHeight);
     msg.classList.add('hidden'); badge.classList.remove('hidden');
     loadDetector();
   }catch(e){
-    msg.innerHTML = '<strong>Câmera indisponível</strong>'+
-      'Sirva o arquivo por <code>http://localhost</code> ou HTTPS — navegador bloqueia câmera em <code>file://</code>. '+
-      'Você também pode trabalhar em cima de uma foto.';
+    msg.innerHTML='<strong>Câmera indisponível</strong>Sirva o arquivo por <code>http://localhost</code> ou HTTPS — o navegador bloqueia câmera em <code>file://</code>. Você também pode trabalhar em cima de uma foto.';
     msg.classList.remove('hidden');
   }
 }
 
 function setSize(w,h){
   srcW=w; srcH=h;
-  display.width=w; display.height=h;
-  fx.width=w; fx.height=h;
+  display.width=w; display.height=h; fx.width=w; fx.height=h;
   renderer.setSize(w,h,false);
-  camera = new THREE.OrthographicCamera(-w/2, w/2, h/2, -h/2, -5000, 5000);
-  camera.position.z = 100;
-  if(!S.box) S.box = {cx:w/2, cy:h/2, w:w*0.22, h:h*0.55};
-  S.target = {...S.box};
+  camera=new THREE.OrthographicCamera(-w/2,w/2,h/2,-h/2,-5000,5000);
+  camera.position.z=100;
+  if(!S.fit){
+    S.fit={cx:w/2,cy:h/2,r:w*0.10,h:h*0.5,roll:0,tilt:0.12};
+    S.fitTarget={...S.fit};
+  }
 }
 
 async function loadDetector(){
+  badgeText.textContent='carregando detector';
+  let fileset;
   try{
-    badgeText.textContent = 'carregando detector';
-    const fileset = await FilesetResolver.forVisionTasks(
+    fileset=await FilesetResolver.forVisionTasks(
       "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
-    detector = await ObjectDetector.createFromOptions(fileset,{
-      baseOptions:{
-        modelAssetPath:"https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite",
-        delegate:"GPU"
-      },
-      scoreThreshold:0.28, maxResults:8, runningMode:"VIDEO"
-    });
-    badgeText.textContent = 'procurando lata';
-  }catch(e){
-    console.warn(e);
-    detector = null;
-    setMode('manual');
-    badgeText.textContent = 'detector indisponível — modo manual';
+  }catch(e){ detector=null; setMode('manual'); badgeText.textContent='detector indisponível — modo manual'; return; }
+
+  for(const [nome,url] of MODELS){
+    try{
+      detector=await ObjectDetector.createFromOptions(fileset,{
+        baseOptions:{modelAssetPath:url,delegate:"GPU"},
+        scoreThreshold:0.14, maxResults:12, runningMode:"VIDEO"
+      });
+      modelName=nome; badgeText.textContent='procurando lata · '+nome;
+      return;
+    }catch(e){ console.warn('modelo falhou:',nome,e); }
   }
+  detector=null; setMode('manual');
+  badgeText.textContent='detector indisponível — modo manual';
 }
 
-/* ============ detecção ============ */
-let lastVideoTime = -1;
+/* ===================== detecção grosseira ===================== */
+let lastVideoTime=-1;
 function detect(now){
   if(!detector || S.mode!=='auto' || S.source!=='cam' || S.frozen) return;
-  if(video.currentTime === lastVideoTime) return;
-  lastVideoTime = video.currentTime;
-  let res;
-  try{ res = detector.detectForVideo(video, now); }catch(e){ return; }
+  if(S.locked && now-S.lastDetect<2500) return;
+  if(now-S.lastDetect<220) return;
+  if(video.currentTime===lastVideoTime) return;
+  lastVideoTime=video.currentTime; S.lastDetect=now;
+
+  let res; try{ res=detector.detectForVideo(video,now); }catch(e){ return; }
+
   let best=null;
   for(const d of (res.detections||[])){
-    const cat = d.categories?.[0]; if(!cat) continue;
-    if(!CLASSES.has(cat.categoryName)) continue;
-    const bb = d.boundingBox;
-    if(bb.height < bb.width) continue;            // lata é mais alta que larga
-    if(!best || cat.score > best.score) best = {score:cat.score, bb};
+    const c=d.categories?.[0]; if(!c) continue;
+    const bb=d.boundingBox;
+    if(bb.height<=bb.width*1.05) continue;
+    const ar=bb.height/bb.width;
+    if(ar>6) continue;
+
+    let s=c.score;
+    if(CLASSES.has(c.categoryName)) s+=0.35;
+    s+=Math.max(0,0.25-Math.abs(ar-2.0)*0.09);
+    if(S.fit){
+      const dx=(bb.originX+bb.width/2-S.fit.cx)/srcW;
+      const dy=(bb.originY+bb.height/2-S.fit.cy)/srcH;
+      s+=Math.max(0,0.30-Math.hypot(dx,dy)*0.8);
+    }
+    if(!best||s>best.s) best={s,bb,name:c.categoryName,score:c.score};
   }
-  if(best){
-    const bb = best.bb;
-    S.target = {cx:bb.originX+bb.width/2, cy:bb.originY+bb.height/2, w:bb.width, h:bb.height};
-    S.lastSeen = now;
-    dot.className='dot live';
-    badgeText.textContent = `lata detectada · ${Math.round(best.score*100)}%`;
-  }else if(now - S.lastSeen > 900){
-    dot.className='dot lost';
-    badgeText.textContent = 'sem lata no quadro';
+
+  if(best && !S.locked){
+    const bb=best.bb;
+    S.fitTarget={
+      cx:bb.originX+bb.width/2, cy:bb.originY+bb.height/2,
+      r:bb.width*0.42, h:bb.height*0.86,
+      roll:0, tilt:S.fit?S.fit.tilt:0.12
+    };
+    S.fit={...S.fitTarget};
+    badgeText.textContent=`${best.name} ${Math.round(best.score*100)}% · refinando`;
   }
 }
 
-/* ============ render ============ */
-function render(now){
-  requestAnimationFrame(render);
-  if(!srcW) return;
+/* ===================== refinamento por bordas ===================== */
+const RW=200;
+
+function fitLine(ys,xs){
+  const n=ys.length; if(n<8) return null;
+  let idx=ys.map((_,i)=>i), a=0,b=0;
+  for(let it=0;it<3;it++){
+    let sy=0,sx=0,syy=0,sxy=0,m=0;
+    for(const i of idx){ sy+=ys[i]; sx+=xs[i]; syy+=ys[i]*ys[i]; sxy+=ys[i]*xs[i]; m++; }
+    const den=m*syy-sy*sy; if(Math.abs(den)<1e-6) return null;
+    a=(m*sxy-sy*sx)/den; b=(sx-a*sy)/m;
+    const res=idx.map(i=>Math.abs(xs[i]-(a*ys[i]+b)));
+    const sorted=[...res].sort((p,q)=>p-q);
+    const med=sorted[sorted.length>>1]||1;
+    const thr=Math.max(1.5,med*2.2);
+    const keep=idx.filter((_,k)=>res[k]<=thr);
+    if(keep.length<n*0.35) break;
+    idx=keep;
+  }
+  return {a,b,inl:idx.length/n};
+}
+
+function refine(f){
+  const src=source(); if(!src||!f) return null;
+  const pad=0.20;
+  const bw=f.r*2*1.3, bh=f.h*1.15;
+  let x0=f.cx-bw*(0.5+pad), y0=f.cy-bh*(0.5+pad);
+  let w0=bw*(1+2*pad), h0=bh*(1+2*pad);
+  x0=Math.max(0,x0); y0=Math.max(0,y0);
+  w0=Math.min(srcW-x0,w0); h0=Math.min(srcH-y0,h0);
+  if(w0<28||h0<28) return null;
+
+  const rh=Math.max(28,Math.round(RW*h0/w0));
+  roi.width=RW; roi.height=rh;
+  try{ rctx.drawImage(src,x0,y0,w0,h0,0,0,RW,rh); }catch(e){ return null; }
+  let d; try{ d=rctx.getImageData(0,0,RW,rh).data; }catch(e){ return null; }
+  const g=new Float32Array(RW*rh);
+  for(let i=0,p=0;i<d.length;i+=4,p++) g[p]=d[i]*0.299+d[i+1]*0.587+d[i+2]*0.114;
+
+  const thr=S.edgeThr;
+  const y1=Math.round(rh*0.24), y2=Math.round(rh*0.76);
+  if(y2-y1<10) return null;
+  const mid=RW>>1;
+
+  // passe 1 — melhor borda vertical em cada metade
+  let ys=[],xl=[],xr=[];
+  for(let y=y1;y<y2;y++){
+    const row=y*RW; let bl=-1,bv=0,br=-1,brv=0;
+    for(let x=3;x<RW-3;x++){
+      const gx=Math.abs(g[row+x+3]-g[row+x-3]);
+      if(x<mid){ if(gx>bv){bv=gx;bl=x;} } else { if(gx>brv){brv=gx;br=x;} }
+    }
+    if(bv>thr&&brv>thr&&br-bl>RW*0.14){ ys.push(y); xl.push(bl); xr.push(br); }
+  }
+  if(ys.length<(y2-y1)*0.40) return null;
+  let L=fitLine(ys,xl), R=fitLine(ys,xr);
+  if(!L||!R) return null;
+
+  // passe 2 — busca numa faixa estreita ao redor das retas ajustadas
+  const band=Math.round(RW*0.10);
+  ys=[]; xl=[]; xr=[];
+  for(let y=y1;y<y2;y++){
+    const row=y*RW;
+    const el=Math.round(L.a*y+L.b), er=Math.round(R.a*y+R.b);
+    let bl=-1,bv=0,br=-1,brv=0;
+    for(let x=Math.max(3,el-band);x<=Math.min(RW-4,el+band);x++){
+      const gx=Math.abs(g[row+x+3]-g[row+x-3]); if(gx>bv){bv=gx;bl=x;}
+    }
+    for(let x=Math.max(3,er-band);x<=Math.min(RW-4,er+band);x++){
+      const gx=Math.abs(g[row+x+3]-g[row+x-3]); if(gx>brv){brv=gx;br=x;}
+    }
+    if(bv>thr&&brv>thr&&br-bl>RW*0.14){ ys.push(y); xl.push(bl); xr.push(br); }
+  }
+  if(ys.length<(y2-y1)*0.40) return null;
+  L=fitLine(ys,xl)||L; R=fitLine(ys,xr)||R;
+
+  const slope=(L.a+R.a)/2;
+  const ax=y=>((L.a*y+L.b)+(R.a*y+R.b))/2;
+  const widths=ys.map((y,i)=>xr[i]-xl[i]).sort((p,q)=>p-q);
+  const rr=widths[widths.length>>1]/2;
+  if(rr<RW*0.06) return null;
+
+  // topo e base: primeira borda horizontal forte, varrendo de fora para dentro
+  const ymid=(y1+y2)/2;
+  const scanTop=col=>{
+    const x=Math.round(col); if(x<3||x>RW-4) return null;
+    for(let y=3;y<ymid;y++){
+      if(Math.abs(g[(y+3)*RW+x]-g[(y-3)*RW+x])>thr) return y;
+    }
+    return null;
+  };
+  const scanBot=col=>{
+    const x=Math.round(col); if(x<3||x>RW-4) return null;
+    for(let y=rh-4;y>ymid;y--){
+      if(Math.abs(g[Math.min(rh-1,y+3)*RW+x]-g[(y-3)*RW+x])>thr) return y;
+    }
+    return null;
+  };
+
+  const tC=scanTop(ax(y1));
+  const tL=scanTop(ax(y1)-rr*0.68), tR=scanTop(ax(y1)+rr*0.68);
+  const bC=scanBot(ax(y2));
+  if(tC==null||bC==null||bC-tC<rh*0.25) return null;
+
+  // flecha da elipse do topo -> ângulo de elevação
+  let tilt=S.fit?S.fit.tilt:0.12;
+  if(S.autoTilt&&tL!=null&&tR!=null){
+    const sag=((tL+tR)/2)-tC;
+    tilt=Math.asin(Math.max(-0.95,Math.min(0.95,sag/rr)));
+  }
+  // altura do corpo, descontando a saliência das elipses
+  const proj=bC-tC;
+  const hBody=(proj-2*rr*Math.abs(Math.sin(tilt)))/Math.max(0.35,Math.cos(tilt));
+  if(hBody<rh*0.15) return null;
+
+  const k=w0/RW;
+  return {
+    cx:x0+ax((tC+bC)/2)*k,
+    cy:y0+((tC+bC)/2)*k,
+    r:rr*k,
+    h:hBody*k,
+    roll:Math.atan(slope),
+    tilt,
+    conf:Math.min(L.inl,R.inl)
+  };
+}
+
+/* ===================== loop ===================== */
+function ema(o,n,k){
+  for(const p of ['cx','cy','r','h']) o[p]+=(n[p]-o[p])*k;
+  o.roll+=(n.roll-o.roll)*k*0.7;
+  o.tilt+=(n.tilt-o.tilt)*k*0.6;
+}
+
+function loop(now){
+  requestAnimationFrame(loop);
+  if(!srcW||!S.fit) return;
 
   detect(now);
 
-  // suavização exponencial da caixa
-  if(S.target && S.box){
-    const k = S.mode==='auto' ? 0.22 : 1;
-    for(const p of ['cx','cy','w','h']) S.box[p] += (S.target[p]-S.box[p])*k;
+  if(S.mode==='auto'&&!S.corners){
+    const r=refine(S.fit);
+    if(r&&r.conf>0.45){
+      ema(S.fit,r,0.35);
+      S.locked=true; S.lastGood=now; S.conf=r.conf;
+      dot.className='dot live';
+      badgeText.textContent=`travado ${Math.round(r.conf*100)}% · ${modelName} · incl ${Math.round(S.fit.tilt*57.3)}°`;
+    }else if(now-S.lastGood>700){
+      S.locked=false; dot.className='dot lost';
+      badgeText.textContent='sem borda estável — procurando';
+    }
+  }else if(S.fitTarget){
+    ema(S.fit,S.fitTarget,1);
   }
 
-  if(S.autoSpin && !S.frozen) S.spin = (S.spin + 0.7 + 180) % 360 - 180;
+  if(S.autoSpin&&!S.frozen) S.spin=(S.spin+0.7+180)%360-180;
 
-  // geometria em pixels
-  const b = S.box;
-  const h = b.h * S.heightF;
-  const r = (b.w/2) * S.widthF;
-  group.position.set(b.cx - srcW/2, srcH/2 - b.cy, 0);
-  group.rotation.set(THREE.Math.degToRad(S.tilt), THREE.Math.degToRad(S.spin), 0);
-  labelMesh.scale.set(r, h, r);
-  bodyMesh.scale.set(r*0.995, h*1.16, r*0.995);
-  labelMesh.material = (S.blend==='label') ? matFlat : matLit;
-  bodyMesh.visible = (S.blend==='solid');
-  labelMesh.visible = S.hasArt;
+  const f=S.fit;
+  rollG.position.set(f.cx-srcW/2, srcH/2-f.cy, 0);
+  rollG.rotation.z=f.roll+THREE.Math.degToRad(S.rollOff);
+  tiltG.rotation.x=f.tilt+THREE.Math.degToRad(S.tiltOff);
+  spinG.rotation.y=THREE.Math.degToRad(S.spin);
+  const r=f.r*S.widthF, h=f.h*S.heightF;
+  labelMesh.scale.set(r,h,r);
+  bodyMesh.scale.set(r*0.995,h*1.14,r*0.995);
+  labelMesh.material=(S.blend==='label')?matFlat:matLit;
+  bodyMesh.visible=(S.blend==='solid');
+  labelMesh.visible=S.hasArt;
+  renderer.render(scene,camera);
 
-  renderer.render(scene, camera);
-
-  const src = S.frozen ? frozenFrame : (S.source==='photo' ? photoImg : video);
-  if(!src) return;
-
-  dctx.globalCompositeOperation='source-over';
-  dctx.globalAlpha=1;
-  dctx.filter='none';
+  const src=source(); if(!src) return;
+  dctx.globalCompositeOperation='source-over'; dctx.globalAlpha=1; dctx.filter='none';
   dctx.drawImage(src,0,0,srcW,srcH);
 
-  if(!S.hasArt) return;
-
-  if(S.blend==='label'){
-    // arte × luminância real, recortada na silhueta da lata
-    fctx.globalCompositeOperation='source-over'; fctx.filter='none';
-    fctx.clearRect(0,0,srcW,srcH);
-    fctx.drawImage(glCanvas,0,0,srcW,srcH);
-    fctx.globalCompositeOperation='multiply';
-    fctx.filter=`grayscale(1) brightness(${S.light})`;
-    fctx.drawImage(src,0,0,srcW,srcH);
-    fctx.filter='none';
-    fctx.globalCompositeOperation='destination-in';
-    fctx.drawImage(glCanvas,0,0,srcW,srcH);
-    dctx.globalAlpha=S.alpha;
-    dctx.drawImage(fx,0,0);
-    dctx.globalAlpha=1;
-  }else{
-    dctx.globalAlpha=S.alpha;
-    dctx.drawImage(glCanvas,0,0,srcW,srcH);
-    dctx.globalAlpha=1;
+  if(S.hasArt){
+    if(S.blend==='label'){
+      fctx.globalCompositeOperation='source-over'; fctx.filter='none';
+      fctx.clearRect(0,0,srcW,srcH);
+      fctx.drawImage(glCanvas,0,0,srcW,srcH);
+      fctx.globalCompositeOperation='multiply';
+      fctx.filter=`grayscale(1) brightness(${S.light})`;
+      fctx.drawImage(src,0,0,srcW,srcH);
+      fctx.filter='none';
+      fctx.globalCompositeOperation='destination-in';
+      fctx.drawImage(glCanvas,0,0,srcW,srcH);
+      dctx.globalAlpha=S.alpha; dctx.drawImage(fx,0,0); dctx.globalAlpha=1;
+    }else{
+      dctx.globalAlpha=S.alpha; dctx.drawImage(glCanvas,0,0,srcW,srcH); dctx.globalAlpha=1;
+    }
   }
+  if(S.debug) drawDebug();
+  if(S.corners) drawCorners();
 }
-requestAnimationFrame(render);
+requestAnimationFrame(loop);
 
-/* ============ controles ============ */
-const $ = id => document.getElementById(id);
+function quad(f){
+  const dn=[Math.sin(f.roll),Math.cos(f.roll)];
+  const rt=[Math.cos(f.roll),-Math.sin(f.roll)];
+  const hh=f.h*S.heightF/2, rr=f.r*S.widthF;
+  const P=(sy,sx)=>[f.cx+dn[0]*hh*sy+rt[0]*rr*sx, f.cy+dn[1]*hh*sy+rt[1]*rr*sx];
+  return [P(-1,-1),P(-1,1),P(1,1),P(1,-1)];
+}
+function drawDebug(){
+  const q=quad(S.fit);
+  dctx.save();
+  dctx.strokeStyle='#00e0ff'; dctx.lineWidth=Math.max(2,srcW/500); dctx.setLineDash([7,5]);
+  dctx.beginPath(); dctx.moveTo(q[0][0],q[0][1]);
+  for(let i=1;i<4;i++) dctx.lineTo(q[i][0],q[i][1]);
+  dctx.closePath(); dctx.stroke(); dctx.setLineDash([]);
+  dctx.fillStyle='#00e0ff';
+  for(const p of q){ dctx.beginPath(); dctx.arc(p[0],p[1],srcW/220,0,Math.PI*2); dctx.fill(); }
+  dctx.restore();
+}
+function drawCorners(){
+  dctx.save(); dctx.fillStyle='#e0a92b';
+  for(const p of S.corners){ dctx.beginPath(); dctx.arc(p[0],p[1],srcW/150,0,Math.PI*2); dctx.fill(); }
+  dctx.restore();
+}
 
-function press(el,on){ el.setAttribute('aria-pressed', on?'true':'false'); }
+/* ===================== controles ===================== */
+const press=(el,on)=>el.setAttribute('aria-pressed',on?'true':'false');
 
-$('artFile').addEventListener('change', e=>{
-  const f = e.target.files[0]; if(!f) return;
-  const url = URL.createObjectURL(f);
-  new THREE.TextureLoader().load(url, tex=>{
-    tex.encoding = THREE.sRGBEncoding;
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.anisotropy = 8;
-    matFlat.map = tex; matLit.map = tex;
-    matFlat.needsUpdate = matLit.needsUpdate = true;
-    S.hasArt = true;
-    URL.revokeObjectURL(url);
+$('artFile').addEventListener('change',e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const url=URL.createObjectURL(f);
+  new THREE.TextureLoader().load(url,tex=>{
+    tex.encoding=THREE.sRGBEncoding; tex.wrapS=THREE.RepeatWrapping; tex.anisotropy=8;
+    matFlat.map=tex; matLit.map=tex; matFlat.needsUpdate=matLit.needsUpdate=true;
+    S.hasArt=true; URL.revokeObjectURL(url);
   });
 });
-document.querySelector('label[for=artFile]').addEventListener('keydown', e=>{
-  if(e.key==='Enter'||e.key===' '){ e.preventDefault(); $('artFile').click(); }
-});
+document.querySelector('label[for=artFile]').addEventListener('keydown',e=>{
+  if(e.key==='Enter'||e.key===' '){ e.preventDefault(); $('artFile').click(); }});
 
-$('photoFile').addEventListener('change', e=>{
-  const f = e.target.files[0]; if(!f) return;
-  const img = new Image();
-  img.onload = ()=>{
-    photoImg = img; S.source='photo'; S.frozen=false;
+$('photoFile').addEventListener('change',e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const img=new Image();
+  img.onload=()=>{
+    photoImg=img; S.source='photo'; S.frozen=false; S.locked=false;
     press($('srcPhoto'),true); press($('srcCam'),false);
+    S.fit=null; setSize(img.naturalWidth,img.naturalHeight);
     setMode('manual');
-    setSize(img.naturalWidth, img.naturalHeight);
-    S.box = {cx:srcW/2, cy:srcH/2, w:srcW*0.22, h:srcH*0.55}; S.target={...S.box};
     msg.classList.add('hidden'); badge.classList.remove('hidden');
-    dot.className='dot'; badgeText.textContent='foto · posicione arrastando';
+    dot.className='dot'; badgeText.textContent='foto · encaixe nas bordas ou marque os cantos';
   };
-  img.src = URL.createObjectURL(f);
+  img.src=URL.createObjectURL(f);
 });
-
-$('srcCam').onclick = ()=>{
-  S.source='cam'; S.frozen=false; press($('srcCam'),true); press($('srcPhoto'),false);
-  if(video.videoWidth) setSize(video.videoWidth, video.videoHeight); else startCamera();
+$('srcCam').onclick=()=>{
+  S.source='cam'; S.frozen=false; S.locked=false;
+  press($('srcCam'),true); press($('srcPhoto'),false);
+  if(video.videoWidth){ S.fit=null; setSize(video.videoWidth,video.videoHeight); setMode('auto'); }
+  else startCamera();
 };
-$('srcPhoto').onclick = ()=> $('photoFile').click();
+$('srcPhoto').onclick=()=>$('photoFile').click();
 
 function setMode(m){
-  S.mode=m; press($('modeAuto'), m==='auto'); press($('modeManual'), m==='manual');
+  S.mode=m; press($('modeAuto'),m==='auto'); press($('modeManual'),m==='manual');
   $('posHint').textContent = m==='auto'
-    ? 'Aponte para uma lata ou garrafa. Arraste na imagem para corrigir.'
-    : 'Arraste para mover, pinça ou roda do mouse para redimensionar.';
+    ? 'O detector encontra a lata uma vez; depois o rastreio de bordas assume e mantém o encaixe.'
+    : 'Arraste para mover, roda ou pinça para redimensionar. Use os botões acima para encaixar.';
 }
-$('modeAuto').onclick = ()=> setMode('auto');
-$('modeManual').onclick = ()=> setMode('manual');
+$('modeAuto').onclick=()=>{ setMode('auto'); S.locked=false; S.corners=null; display.classList.remove('picking'); };
+$('modeManual').onclick=()=>setMode('manual');
+
+$('btnReseed').onclick=()=>{
+  S.locked=false; S.corners=null; S.lastDetect=0; display.classList.remove('picking');
+  setMode('auto'); badgeText.textContent='procurando lata · '+(modelName||'—');
+};
+
+$('btnSnap').onclick=()=>{
+  const r=refine(S.fit);
+  if(r){ S.fit={...r}; S.fitTarget={...r};
+    badgeText.textContent=`encaixado ${Math.round(r.conf*100)}%`; dot.className='dot live'; }
+  else badgeText.textContent='bordas fracas — mexa na sensibilidade';
+};
+
+$('btnCorners').onclick=()=>{
+  S.corners=[]; setMode('manual'); display.classList.add('picking');
+  badgeText.textContent='clique: topo-esq, topo-dir, base-dir, base-esq';
+};
+
+$('btnAutoTilt').onclick=e=>{ S.autoTilt=!S.autoTilt; press(e.currentTarget,S.autoTilt); };
+$('btnDebug').onclick=e=>{ S.debug=!S.debug; press(e.currentTarget,S.debug); };
+$('btnAutoSpin').onclick=e=>{ S.autoSpin=!S.autoSpin; press(e.currentTarget,S.autoSpin); };
+
+function slider(id,valId,key,fmt){
+  const el=$(id);
+  el.addEventListener('input',()=>{ S[key]=parseFloat(el.value); $(valId).textContent=fmt(S[key]); });
+  $(valId).textContent=fmt(S[key]);
+}
+slider('sWidth','vWidth','widthF',v=>v.toFixed(2));
+slider('sHeight','vHeight','heightF',v=>v.toFixed(2));
+slider('sSpin','vSpin','spin',v=>Math.round(v)+'°');
+slider('sTilt','vTilt','tiltOff',v=>(v>0?'+':'')+Math.round(v)+'°');
+slider('sRoll','vRoll','rollOff',v=>(v>0?'+':'')+Math.round(v)+'°');
+slider('sAlpha','vAlpha','alpha',v=>Math.round(v*100)+'%');
+slider('sLight','vLight','light',v=>v.toFixed(2));
+slider('sEdge','vEdge','edgeThr',v=>String(Math.round(v)));
 
 function setBlend(b){
-  S.blend=b; press($('blendLabel'), b==='label'); press($('blendSolid'), b==='solid');
-  $('rowLight').style.display = b==='label' ? 'block' : 'none';
-  $('blendHint').textContent = b==='label'
+  S.blend=b; press($('blendLabel'),b==='label'); press($('blendSolid'),b==='solid');
+  $('rowLight').style.display=b==='label'?'block':'none';
+  $('blendHint').textContent=b==='label'
     ? 'A arte é multiplicada pela luz do vídeo, então herda sombra e curvatura da lata real.'
     : 'Lata renderizada com iluminação própria, por cima da cena. Útil quando não há lata física.';
 }
-$('blendLabel').onclick = ()=> setBlend('label');
-$('blendSolid').onclick = ()=> setBlend('solid');
+$('blendLabel').onclick=()=>setBlend('label');
+$('blendSolid').onclick=()=>setBlend('solid');
 
-function slider(id, valId, key, fmt){
-  const el = $(id);
-  el.addEventListener('input', ()=>{ S[key]=parseFloat(el.value); $(valId).textContent = fmt(S[key]); });
-  $(valId).textContent = fmt(S[key]);
-}
-slider('sWidth','vWidth','widthF', v=>v.toFixed(2));
-slider('sHeight','vHeight','heightF', v=>v.toFixed(2));
-slider('sSpin','vSpin','spin', v=>Math.round(v)+'°');
-slider('sTilt','vTilt','tilt', v=>Math.round(v)+'°');
-slider('sAlpha','vAlpha','alpha', v=>Math.round(v*100)+'%');
-slider('sLight','vLight','light', v=>v.toFixed(2));
-
-$('btnAutoSpin').onclick = e=>{ S.autoSpin=!S.autoSpin; press(e.currentTarget, S.autoSpin); };
-
-$('btnFreeze').onclick = e=>{
+$('btnFreeze').onclick=e=>{
   if(!S.frozen){
-    const c = document.createElement('canvas'); c.width=srcW; c.height=srcH;
-    c.getContext('2d').drawImage(S.source==='photo'?photoImg:video,0,0,srcW,srcH);
-    frozenFrame = c; S.frozen = true; e.currentTarget.textContent = 'Voltar ao vivo';
-    badgeText.textContent = 'imagem congelada';
-  }else{
-    S.frozen = false; e.currentTarget.textContent = 'Congelar imagem';
-  }
+    const c=document.createElement('canvas'); c.width=srcW; c.height=srcH;
+    c.getContext('2d').drawImage(source(),0,0,srcW,srcH);
+    frozenFrame=c; S.frozen=true; e.currentTarget.textContent='Voltar ao vivo';
+    badgeText.textContent='imagem congelada';
+  }else{ S.frozen=false; e.currentTarget.textContent='Congelar imagem'; }
+};
+$('btnSave').onclick=()=>{
+  const dbg=S.debug; S.debug=false;
+  requestAnimationFrame(()=>{
+    const a=document.createElement('a');
+    a.download=`mockup-lata-${Date.now()}.png`; a.href=display.toDataURL('image/png'); a.click();
+    S.debug=dbg;
+  });
 };
 
-$('btnSave').onclick = ()=>{
-  const a = document.createElement('a');
-  a.download = `mockup-lata-${Date.now()}.png`;
-  a.href = display.toDataURL('image/png');
-  a.click();
-};
-
-/* ---- arrastar e redimensionar sobre a imagem ---- */
+/* ---- interação sobre a imagem ---- */
 let drag=null;
 function toImage(e){
-  const r = display.getBoundingClientRect();
-  return { x:(e.clientX-r.left)*(srcW/r.width), y:(e.clientY-r.top)*(srcH/r.height) };
+  const r=display.getBoundingClientRect();
+  return [(e.clientX-r.left)*(srcW/r.width),(e.clientY-r.top)*(srcH/r.height)];
 }
-display.addEventListener('pointerdown', e=>{
+display.addEventListener('pointerdown',e=>{
+  if(!S.fit) return;
+  const p=toImage(e);
+  if(S.corners){
+    S.corners.push(p);
+    if(S.corners.length===4){
+      const [a,b,c,d]=S.corners;
+      const T=[(a[0]+b[0])/2,(a[1]+b[1])/2], B=[(c[0]+d[0])/2,(c[1]+d[1])/2];
+      const dx=B[0]-T[0], dy=B[1]-T[1];
+      const wTop=Math.hypot(b[0]-a[0],b[1]-a[1]), wBot=Math.hypot(c[0]-d[0],c[1]-d[1]);
+      S.fit={ cx:(T[0]+B[0])/2, cy:(T[1]+B[1])/2,
+              r:(wTop+wBot)/4, h:Math.hypot(dx,dy),
+              roll:Math.atan2(dx,Math.max(1,dy)), tilt:S.fit.tilt };
+      S.fitTarget={...S.fit}; S.corners=null;
+      display.classList.remove('picking');
+      badgeText.textContent='encaixe manual pelos 4 cantos'; dot.className='dot live';
+    }else badgeText.textContent=`canto ${S.corners.length} de 4`;
+    return;
+  }
   display.setPointerCapture(e.pointerId); display.classList.add('dragging');
-  const p = toImage(e); drag = {x:p.x - S.box.cx, y:p.y - S.box.cy};
+  drag=[p[0]-S.fit.cx,p[1]-S.fit.cy];
 });
-display.addEventListener('pointermove', e=>{
-  if(!drag) return;
-  const p = toImage(e);
-  S.target = {...S.box, cx:p.x-drag.x, cy:p.y-drag.y};
-  if(S.mode==='auto') setMode('manual');
+display.addEventListener('pointermove',e=>{
+  if(!drag||!S.fit) return;
+  const p=toImage(e);
+  if(S.mode==='auto'){ setMode('manual'); S.locked=false; }
+  S.fit.cx=p[0]-drag[0]; S.fit.cy=p[1]-drag[1]; S.fitTarget={...S.fit};
 });
-display.addEventListener('pointerup', e=>{ drag=null; display.classList.remove('dragging'); });
-display.addEventListener('wheel', e=>{
-  e.preventDefault();
-  const f = e.deltaY>0 ? 0.96 : 1.04;
-  S.target = {...S.box, w:S.box.w*f, h:S.box.h*f};
-  if(S.mode==='auto') setMode('manual');
+display.addEventListener('pointerup',()=>{ drag=null; display.classList.remove('dragging'); });
+display.addEventListener('wheel',e=>{
+  e.preventDefault(); if(!S.fit) return;
+  const k=e.deltaY>0?0.96:1.04;
+  if(S.mode==='auto'){ setMode('manual'); S.locked=false; }
+  S.fit.r*=k; S.fit.h*=k; S.fitTarget={...S.fit};
 },{passive:false});
 
 setBlend('label');

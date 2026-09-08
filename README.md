@@ -21,7 +21,7 @@ Tudo está em `index.html`: marcação, estilo e lógica. Não há build, bundle
 
 - [`@mediapipe/tasks-vision`](https://www.npmjs.com/package/@mediapipe/tasks-vision) 0.10.14 — detecção de objetos
 - [`three`](https://threejs.org/) r128 — renderização do cilindro
-- Modelo `efficientdet_lite0.tflite` do storage público do Google
+- Modelo `efficientdet_lite2.tflite` do storage público do Google, com queda automática para o `lite0` se o carregamento falhar
 
 ---
 
@@ -110,7 +110,8 @@ Luz lateral funciona melhor que luz frontal: ela cria o gradiente de sombra na c
 1. Abra a página e permita o acesso à câmera.
 2. Clique em **Escolher arte do rótulo** e selecione o arquivo.
 3. Aponte para a lata. O selo no canto superior esquerdo mostra o estado: procurando, detectada com o percentual de confiança, ou sem lata no quadro.
-4. Se a detecção errar ou oscilar, **arraste direto na imagem**. Isso alterna para o modo manual sozinho. Roda do mouse ou pinça redimensiona.
+4. Assim que travar, o rastreio de bordas assume e o detector para de rodar. O selo passa a mostrar confiança do contorno e a inclinação estimada.
+5. Se errar ou oscilar, você tem três saídas, da mais rápida para a mais precisa: **arraste direto na imagem**, clique em **Encaixar nas bordas agora**, ou use **Marcar 4 cantos** e clique nos quatro cantos da lata.
 
 Ajuste nesta ordem, que economiza tempo:
 
@@ -121,7 +122,7 @@ Ajuste nesta ordem, que economiza tempo:
 | Ganho de luz | Compensar o quanto a lata original é clara ou escura |
 | Intensidade | Suavizar o efeito, se necessário |
 
-5. Fechado o enquadramento, use **Congelar imagem** para conferir sem tremida e depois **Salvar PNG**.
+6. Fechado o enquadramento, use **Congelar imagem** para conferir sem tremida e depois **Salvar PNG**.
 
 ### Os dois modos de composição
 
@@ -139,11 +140,19 @@ Este é o fluxo mais comercial dos três: o cliente manda uma foto do produto de
 
 ## Como funciona
 
-### Detecção
+### Detecção e rastreio
 
-O modelo é o EfficientDet-Lite treinado em COCO, que **não tem a classe "lata"**. O código aceita `bottle`, `cup`, `wine glass` e `vase`, e descarta qualquer caixa mais larga que alta. Funciona na maioria das latas e garrafas em pé.
+São duas etapas separadas, e essa separação é o ponto do projeto.
 
-A caixa detectada passa por suavização exponencial antes de virar posição e escala do cilindro, senão o tremor da detecção passa direto para o render.
+**Detecção grosseira.** EfficientDet-Lite2 treinado em COCO, que **não tem a classe "lata"**. O código aceita `bottle`, `cup`, `wine glass`, `vase` e `bowl`, descarta caixas mais largas que altas, e pontua cada candidato por uma combinação de confiança, plausibilidade da classe, proporção próxima de 2:1 e proximidade do encaixe anterior. Só precisa acertar uma vez.
+
+**Rastreio por bordas.** Depois que o detector semeia uma região, todo o resto é visão clássica rodando a cada quadro numa janela de 200 px. Para cada linha, o gradiente horizontal mais forte de cada lado marca o contorno da lata; duas retas são ajustadas por mínimos quadrados com descarte iterativo de resíduos altos. Um segundo passe repete a busca numa faixa estreita ao redor das retas, o que rejeita a bagunça do fundo.
+
+Disso saem quatro coisas que a caixa delimitadora não fornece: centro exato, raio exato, **inclinação no plano da imagem** e a extensão vertical real do corpo.
+
+**Elevação da câmera.** No topo da lata, a borda superior forma uma elipse. A distância entre o ponto mais alto no centro e a altura da borda nas laterais é o semi-eixo menor dessa elipse. Como `b = r · sen θ`, um arco-seno devolve o ângulo de elevação da câmera, aplicado direto na inclinação do cilindro. A altura do corpo sai de `h = (projeção − 2r·sen θ) / cos θ`, descontando a saliência das duas elipses.
+
+**Travamento.** Enquanto o contorno tem confiança acima de 45%, o detector para de rodar por completo — economiza processamento e elimina o tremor de reseeding. Se as bordas somem por mais de 0,7 s, ele volta a procurar.
 
 ### Composição
 
@@ -164,19 +173,29 @@ No modo *rótulo colado* o material do cilindro é `MeshBasicMaterial`, sem somb
 Ficam no `<script type="module">`, perto do topo:
 
 ```js
-const CLASSES = new Set(['bottle','cup','wine glass','vase','can']);
+const CLASSES = new Set(['bottle','cup','wine glass','vase','can','bowl']);
 ```
-Classes aceitas na detecção. Se treinar um modelo próprio, troque aqui.
+Classes que ganham bônus na pontuação. Se treinar um modelo próprio, troque aqui.
 
 ```js
-scoreThreshold:0.28, maxResults:8
+scoreThreshold:0.14, maxResults:12
 ```
-Confiança mínima. Abaixe para detectar mais, ao custo de falsos positivos.
+Confiança mínima do detector. Está baixa de propósito: a pontuação composta e o refinamento filtram depois.
 
 ```js
-const k = S.mode==='auto' ? 0.22 : 1;
+const RW = 200;
 ```
-Suavização da caixa. Valores menores estabilizam mais e respondem mais devagar.
+Largura da janela de refinamento. Aumentar dá subpixel melhor e custa mais processamento.
+
+```js
+if(r && r.conf > 0.45)
+```
+Confiança mínima do contorno para travar. Suba para exigir bordas mais nítidas.
+
+```js
+ema(S.fit, r, 0.35)
+```
+Suavização temporal. Menor estabiliza mais e responde mais devagar.
 
 ---
 
@@ -184,7 +203,13 @@ Suavização da caixa. Valores menores estabilizam mais e respondem mais devagar
 
 **A câmera não abre.** Você abriu por `file://`. Sirva por `localhost` ou publique em HTTPS.
 
-**Nunca detecta a lata.** COCO não tem a classe e latas baixas e largas falham no filtro de proporção. Use o modo manual, ou treine um detector próprio com o [MediaPipe Model Maker](https://ai.google.dev/edge/mediapipe/solutions/customization/object_detector).
+**Nunca detecta a lata.** COCO não tem a classe e latas baixas e largas falham no filtro de proporção. Use **Marcar 4 cantos**, que dispensa detecção e dá o encaixe mais preciso de todos, ou treine um detector próprio com o [MediaPipe Model Maker](https://ai.google.dev/edge/mediapipe/solutions/customization/object_detector).
+
+**Detecta mas não trava.** As bordas laterais estão fracas — lata clara sobre fundo claro, ou pouca luz. Ligue **Mostrar rastreio** para ver o contorno estimado e mexa na **sensibilidade de borda**: baixe se ele não acha nada, suba se ele está agarrando em listras da própria embalagem.
+
+**O contorno agarra no fundo.** Sensibilidade alta demais ou fundo muito texturizado. Suba a sensibilidade e reposicione contra um fundo mais limpo.
+
+**A inclinação fica errada.** O topo da lata está fora do quadro ou encoberto, então a elipse não é medida. Desligue **inclinação automática** e use o controle de inclinação no ajuste fino.
 
 **O rótulo fica escuro demais.** Aumente o ganho de luz. Lata escura ou pouca iluminação puxam o resultado para baixo.
 
@@ -200,16 +225,19 @@ Suavização da caixa. Valores menores estabilizam mais e respondem mais devagar
 
 **Classe inexistente.** A detecção depende de o COCO confundir lata com garrafa ou copo. Funciona na prática, mas não é robusto. Detector customizado resolve com folga.
 
-**Sem rotação real.** A caixa delimitadora não informa o ângulo de rotação da lata em torno do próprio eixo. O giro é controlado à mão. Estimar isso exigiria pose 6DoF ou correspondência de features na embalagem existente.
+**Sem giro em torno do próprio eixo.** O rastreio recupera inclinação e elevação, mas não sabe qual lado da lata está voltado para a câmera. O giro do rótulo continua manual. Resolver isso exige correspondência de features com a estampa existente, o que só funciona se a lata já tiver estampa.
 
-**Superfície lisa.** Lata sem rótulo, branca ou espelhada não oferece pontos de interesse. A detecção ainda acha o objeto, mas o encaixe fica menos preciso.
+**Contraste com o fundo.** Todo o rastreio depende de a silhueta contrastar com o que está atrás. Lata branca sobre parede branca é o pior caso. Segmentação por modelo resolveria, ao custo de processamento.
+
+**Projeção ortográfica.** A câmera virtual é ortográfica, então a lata não afunila com a distância. Em enquadramento fechado com grande angular a diferença aparece nas bordas.
 
 **Aparelhos antigos.** Sem delegate de GPU o quadro cai bastante. Testar em aparelho de entrada antes de prometer qualquer coisa a cliente.
 
 ## Próximos passos
 
 - Detector customizado de lata via MediaPipe Model Maker
-- Rastreamento por imagem com MindAR quando a embalagem já tem estampa, o que dá pose completa
+- Rastreamento por imagem com MindAR quando a embalagem já tem estampa, o que resolveria também o giro em torno do eixo
+- Câmera em perspectiva com distância focal estimada, no lugar da ortográfica
 - Suporte a outras formas: garrafa, caixa, pote
 - Empacotar como widget embutível por `<script>`, para o lojista colar no próprio site
 
