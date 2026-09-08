@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mockup ao vivo — lata cilíndrica</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0c0f10;
+    --panel:#131719;
+    --panel-2:#1c2225;
+    --line:#2a3236;
+    --ink:#e9eef0;
+    --ink-dim:#8b979c;
+    --steel:#00e0ff;          /* cyan elétrico — acento */
+    --steel-dim:#0a7f92;
+    --ok:#3ecf8e;
+    --warn:#e0a92b;
+    --mono:"Space Mono",ui-monospace,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--bg);color:var(--ink);
+    font-family:"DM Sans",system-ui,sans-serif;font-size:14px;line-height:1.45;
+    -webkit-font-smoothing:antialiased;
+  }
+  .app{display:grid;grid-template-columns:320px 1fr;height:100vh;height:100dvh}
+
+  /* ---------- rail ---------- */
+  .rail{
+    background:var(--panel);border-right:1px solid var(--line);
+    overflow-y:auto;padding:20px 20px 40px;
+  }
+  .brand{margin:0 0 2px;font-size:19px;font-weight:700;letter-spacing:-0.02em}
+  .brand-sub{margin:0 0 22px;color:var(--ink-dim);font-size:12.5px}
+
+  fieldset{border:0;border-top:1px solid var(--line);margin:0 0 4px;padding:16px 0 4px}
+  fieldset:first-of-type{border-top:0;padding-top:0}
+  legend{padding:0 8px 0 0;font-size:12.5px;font-weight:600;color:var(--steel)}
+
+  label.row{display:block;margin:12px 0 0}
+  .row-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:5px}
+  .row-head span:first-child{font-size:12.5px;color:var(--ink-dim)}
+  .val{font-family:var(--mono);font-size:11.5px;color:var(--steel)}
+
+  input[type=range]{width:100%;accent-color:var(--steel);height:18px}
+  input[type=file]{display:none}
+
+  button, .filebtn{
+    display:block;width:100%;padding:9px 12px;margin-top:8px;
+    background:var(--panel-2);color:var(--ink);border:1px solid var(--line);
+    border-radius:3px;font:inherit;font-size:13px;cursor:pointer;text-align:center;
+  }
+  button:hover,.filebtn:hover{border-color:var(--steel-dim)}
+  button:focus-visible,.filebtn:focus-visible{outline:2px solid var(--steel);outline-offset:2px}
+  button.primary{background:var(--steel);color:#141414;border-color:var(--steel);font-weight:600}
+  button[aria-pressed=true]{background:var(--steel);color:#141414;border-color:var(--steel)}
+
+  .seg{display:flex;gap:0;margin-top:8px}
+  .seg button{margin-top:0;border-radius:0}
+  .seg button:first-child{border-radius:3px 0 0 3px}
+  .seg button:last-child{border-radius:0 3px 3px 0;border-left:0}
+
+  .hint{margin:10px 0 0;font-size:12px;color:var(--ink-dim)}
+  .hint code{background:var(--panel-2);padding:1px 5px;border-radius:2px;font-size:11.5px}
+
+  /* ---------- stage ---------- */
+  .stage{position:relative;display:flex;align-items:center;justify-content:center;background:#0d0d0d;overflow:hidden}
+  #display{max-width:100%;max-height:100%;display:block;touch-action:none;cursor:grab}
+  #display.dragging{cursor:grabbing}
+  .badge{
+    position:absolute;top:14px;left:14px;display:flex;align-items:center;gap:8px;
+    background:rgba(20,20,20,.82);border:1px solid var(--line);border-radius:3px;
+    padding:6px 11px;font-family:var(--mono);font-size:11.5px;color:var(--ink-dim);
+    backdrop-filter:blur(6px);
+  }
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--steel-dim);flex:none}
+  .dot.live{background:var(--ok)}
+  .dot.lost{background:var(--warn)}
+  .msg{
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    max-width:min(420px,80vw);text-align:center;color:var(--ink-dim);font-size:14px;line-height:1.6;
+  }
+  .msg strong{display:block;color:var(--ink);font-size:16px;margin-bottom:6px;font-weight:600}
+  .hidden{display:none!important}
+
+  @media (max-width:820px){
+    .app{grid-template-columns:1fr;grid-template-rows:1fr auto}
+    .stage{min-height:45vh}
+    .rail{border-right:0;border-top:1px solid var(--line);max-height:52vh}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <aside class="rail">
+    <h1 class="brand">Mockup ao vivo</h1>
+    <p class="brand-sub">Aplica a arte numa lata cilíndrica em tempo real.</p>
+
+    <fieldset>
+      <legend>Arte</legend>
+      <label class="filebtn" for="artFile" tabindex="0">Escolher arte do rótulo</label>
+      <input type="file" id="artFile" accept="image/*">
+      <p class="hint">A imagem envolve os 360° da lata. Proporção ideal em torno de 3:1 (larga e baixa).</p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Fonte</legend>
+      <div class="seg">
+        <button id="srcCam" aria-pressed="true">Câmera</button>
+        <button id="srcPhoto" aria-pressed="false">Foto</button>
+      </div>
+      <input type="file" id="photoFile" accept="image/*">
+    </fieldset>
+
+    <fieldset>
+      <legend>Posicionamento</legend>
+      <div class="seg">
+        <button id="modeAuto" aria-pressed="true">Detectar lata</button>
+        <button id="modeManual" aria-pressed="false">Manual</button>
+      </div>
+      <p class="hint" id="posHint">Aponte para uma lata ou garrafa. Arraste na imagem para corrigir.</p>
+
+      <label class="row">
+        <span class="row-head"><span>Largura</span><span class="val" id="vWidth">1.00</span></span>
+        <input type="range" id="sWidth" min="0.3" max="2.5" step="0.01" value="1">
+      </label>
+      <label class="row">
+        <span class="row-head"><span>Altura</span><span class="val" id="vHeight">1.00</span></span>
+        <input type="range" id="sHeight" min="0.2" max="2" step="0.01" value="1">
+      </label>
+      <label class="row">
+        <span class="row-head"><span>Giro</span><span class="val" id="vSpin">0°</span></span>
+        <input type="range" id="sSpin" min="-180" max="180" step="1" value="0">
+      </label>
+      <label class="row">
+        <span class="row-head"><span>Inclinação</span><span class="val" id="vTilt">0°</span></span>
+        <input type="range" id="sTilt" min="-25" max="25" step="1" value="0">
+      </label>
+      <button id="btnAutoSpin" aria-pressed="false">Girar sozinho</button>
+    </fieldset>
+
+    <fieldset>
+      <legend>Composição</legend>
+      <div class="seg">
+        <button id="blendLabel" aria-pressed="true">Rótulo colado</button>
+        <button id="blendSolid" aria-pressed="false">Lata 3D</button>
+      </div>
+      <p class="hint" id="blendHint">A arte é multiplicada pela luz do vídeo, então herda sombra e curvatura da lata real.</p>
+
+      <label class="row">
+        <span class="row-head"><span>Intensidade</span><span class="val" id="vAlpha">100%</span></span>
+        <input type="range" id="sAlpha" min="0" max="1" step="0.01" value="1">
+      </label>
+      <label class="row" id="rowLight">
+        <span class="row-head"><span>Ganho de luz</span><span class="val" id="vLight">1.50</span></span>
+        <input type="range" id="sLight" min="1" max="2.6" step="0.05" value="1.5">
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Saída</legend>
+      <button id="btnFreeze">Congelar imagem</button>
+      <button id="btnSave" class="primary">Salvar PNG</button>
+    </fieldset>
+  </aside>
+
+  <main class="stage">
+    <canvas id="display"></canvas>
+    <div class="badge hidden" id="badge"><span class="dot" id="dot"></span><span id="badgeText">iniciando</span></div>
+    <div class="msg" id="msg"><strong>Permita o acesso à câmera</strong>Depois escolha a arte do rótulo no painel ao lado.</div>
+  </main>
+</div>
+
+<video id="video" playsinline muted autoplay style="display:none"></video>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script type="module">
+import { ObjectDetector, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+
+/* ============ estado ============ */
+const S = {
+  source:'cam',           // cam | photo
+  mode:'auto',            // auto | manual
+  blend:'label',          // label | solid
+  autoSpin:false,
+  frozen:false,
+  widthF:1, heightF:1, spin:0, tilt:0, alpha:1, light:1.5,
+  // caixa em pixels da imagem: cx, cy, w, h
+  box:null, target:null, hasArt:false, detecting:false, lastSeen:0
+};
+const CLASSES = new Set(['bottle','cup','wine glass','vase','can']);
+
+const video = document.getElementById('video');
+const display = document.getElementById('display');
+const dctx = display.getContext('2d');
+const fx = document.createElement('canvas');
+const fctx = fx.getContext('2d');
+const msg = document.getElementById('msg');
+const badge = document.getElementById('badge');
+const badgeText = document.getElementById('badgeText');
+const dot = document.getElementById('dot');
+
+let photoImg = null, srcW = 0, srcH = 0, detector = null, frozenFrame = null;
+
+/* ============ three.js ============ */
+const glCanvas = document.createElement('canvas');
+const renderer = new THREE.WebGLRenderer({canvas:glCanvas, alpha:true, antialias:true, preserveDrawingBuffer:true});
+renderer.setPixelRatio(1);
+renderer.outputEncoding = THREE.sRGBEncoding;
+const scene = new THREE.Scene();
+let camera = new THREE.OrthographicCamera(-1,1,1,-1,-5000,5000);
+
+const labelGeo = new THREE.CylinderGeometry(1,1,1,96,1,true);
+const bodyGeo  = new THREE.CylinderGeometry(1,1,1,96,1,false);
+
+const matFlat = new THREE.MeshBasicMaterial({transparent:true, side:THREE.DoubleSide});
+const matLit  = new THREE.MeshPhongMaterial({transparent:true, side:THREE.DoubleSide, shininess:26, specular:0x333333});
+const matBody = new THREE.MeshPhongMaterial({color:0xd6dade, shininess:70, specular:0x8a9096});
+
+const labelMesh = new THREE.Mesh(labelGeo, matFlat);
+const bodyMesh  = new THREE.Mesh(bodyGeo, matBody);
+bodyMesh.visible = false;
+const group = new THREE.Group();
+group.add(bodyMesh); group.add(labelMesh);
+scene.add(group);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.62));
+const key = new THREE.DirectionalLight(0xffffff, 0.75); key.position.set(-1,1.1,2); scene.add(key);
+const fill = new THREE.DirectionalLight(0xffffff, 0.28); fill.position.set(1.4,-0.3,1); scene.add(fill);
+
+/* ============ câmera / fonte ============ */
+async function startCamera(){
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720}}, audio:false
+    });
+    video.srcObject = stream;
+    await video.play();
+    await new Promise(r=>{ if(video.videoWidth) r(); else video.onloadedmetadata=r; });
+    setSize(video.videoWidth, video.videoHeight);
+    msg.classList.add('hidden'); badge.classList.remove('hidden');
+    loadDetector();
+  }catch(e){
+    msg.innerHTML = '<strong>Câmera indisponível</strong>'+
+      'Sirva o arquivo por <code>http://localhost</code> ou HTTPS — navegador bloqueia câmera em <code>file://</code>. '+
+      'Você também pode trabalhar em cima de uma foto.';
+    msg.classList.remove('hidden');
+  }
+}
+
+function setSize(w,h){
+  srcW=w; srcH=h;
+  display.width=w; display.height=h;
+  fx.width=w; fx.height=h;
+  renderer.setSize(w,h,false);
+  camera = new THREE.OrthographicCamera(-w/2, w/2, h/2, -h/2, -5000, 5000);
+  camera.position.z = 100;
+  if(!S.box) S.box = {cx:w/2, cy:h/2, w:w*0.22, h:h*0.55};
+  S.target = {...S.box};
+}
+
+async function loadDetector(){
+  try{
+    badgeText.textContent = 'carregando detector';
+    const fileset = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+    detector = await ObjectDetector.createFromOptions(fileset,{
+      baseOptions:{
+        modelAssetPath:"https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite",
+        delegate:"GPU"
+      },
+      scoreThreshold:0.28, maxResults:8, runningMode:"VIDEO"
+    });
+    badgeText.textContent = 'procurando lata';
+  }catch(e){
+    console.warn(e);
+    detector = null;
+    setMode('manual');
+    badgeText.textContent = 'detector indisponível — modo manual';
+  }
+}
+
+/* ============ detecção ============ */
+let lastVideoTime = -1;
+function detect(now){
+  if(!detector || S.mode!=='auto' || S.source!=='cam' || S.frozen) return;
+  if(video.currentTime === lastVideoTime) return;
+  lastVideoTime = video.currentTime;
+  let res;
+  try{ res = detector.detectForVideo(video, now); }catch(e){ return; }
+  let best=null;
+  for(const d of (res.detections||[])){
+    const cat = d.categories?.[0]; if(!cat) continue;
+    if(!CLASSES.has(cat.categoryName)) continue;
+    const bb = d.boundingBox;
+    if(bb.height < bb.width) continue;            // lata é mais alta que larga
+    if(!best || cat.score > best.score) best = {score:cat.score, bb};
+  }
+  if(best){
+    const bb = best.bb;
+    S.target = {cx:bb.originX+bb.width/2, cy:bb.originY+bb.height/2, w:bb.width, h:bb.height};
+    S.lastSeen = now;
+    dot.className='dot live';
+    badgeText.textContent = `lata detectada · ${Math.round(best.score*100)}%`;
+  }else if(now - S.lastSeen > 900){
+    dot.className='dot lost';
+    badgeText.textContent = 'sem lata no quadro';
+  }
+}
+
+/* ============ render ============ */
+function render(now){
+  requestAnimationFrame(render);
+  if(!srcW) return;
+
+  detect(now);
+
+  // suavização exponencial da caixa
+  if(S.target && S.box){
+    const k = S.mode==='auto' ? 0.22 : 1;
+    for(const p of ['cx','cy','w','h']) S.box[p] += (S.target[p]-S.box[p])*k;
+  }
+
+  if(S.autoSpin && !S.frozen) S.spin = (S.spin + 0.7 + 180) % 360 - 180;
+
+  // geometria em pixels
+  const b = S.box;
+  const h = b.h * S.heightF;
+  const r = (b.w/2) * S.widthF;
+  group.position.set(b.cx - srcW/2, srcH/2 - b.cy, 0);
+  group.rotation.set(THREE.Math.degToRad(S.tilt), THREE.Math.degToRad(S.spin), 0);
+  labelMesh.scale.set(r, h, r);
+  bodyMesh.scale.set(r*0.995, h*1.16, r*0.995);
+  labelMesh.material = (S.blend==='label') ? matFlat : matLit;
+  bodyMesh.visible = (S.blend==='solid');
+  labelMesh.visible = S.hasArt;
+
+  renderer.render(scene, camera);
+
+  const src = S.frozen ? frozenFrame : (S.source==='photo' ? photoImg : video);
+  if(!src) return;
+
+  dctx.globalCompositeOperation='source-over';
+  dctx.globalAlpha=1;
+  dctx.filter='none';
+  dctx.drawImage(src,0,0,srcW,srcH);
+
+  if(!S.hasArt) return;
+
+  if(S.blend==='label'){
+    // arte × luminância real, recortada na silhueta da lata
+    fctx.globalCompositeOperation='source-over'; fctx.filter='none';
+    fctx.clearRect(0,0,srcW,srcH);
+    fctx.drawImage(glCanvas,0,0,srcW,srcH);
+    fctx.globalCompositeOperation='multiply';
+    fctx.filter=`grayscale(1) brightness(${S.light})`;
+    fctx.drawImage(src,0,0,srcW,srcH);
+    fctx.filter='none';
+    fctx.globalCompositeOperation='destination-in';
+    fctx.drawImage(glCanvas,0,0,srcW,srcH);
+    dctx.globalAlpha=S.alpha;
+    dctx.drawImage(fx,0,0);
+    dctx.globalAlpha=1;
+  }else{
+    dctx.globalAlpha=S.alpha;
+    dctx.drawImage(glCanvas,0,0,srcW,srcH);
+    dctx.globalAlpha=1;
+  }
+}
+requestAnimationFrame(render);
+
+/* ============ controles ============ */
+const $ = id => document.getElementById(id);
+
+function press(el,on){ el.setAttribute('aria-pressed', on?'true':'false'); }
+
+$('artFile').addEventListener('change', e=>{
+  const f = e.target.files[0]; if(!f) return;
+  const url = URL.createObjectURL(f);
+  new THREE.TextureLoader().load(url, tex=>{
+    tex.encoding = THREE.sRGBEncoding;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.anisotropy = 8;
+    matFlat.map = tex; matLit.map = tex;
+    matFlat.needsUpdate = matLit.needsUpdate = true;
+    S.hasArt = true;
+    URL.revokeObjectURL(url);
+  });
+});
+document.querySelector('label[for=artFile]').addEventListener('keydown', e=>{
+  if(e.key==='Enter'||e.key===' '){ e.preventDefault(); $('artFile').click(); }
+});
+
+$('photoFile').addEventListener('change', e=>{
+  const f = e.target.files[0]; if(!f) return;
+  const img = new Image();
+  img.onload = ()=>{
+    photoImg = img; S.source='photo'; S.frozen=false;
+    press($('srcPhoto'),true); press($('srcCam'),false);
+    setMode('manual');
+    setSize(img.naturalWidth, img.naturalHeight);
+    S.box = {cx:srcW/2, cy:srcH/2, w:srcW*0.22, h:srcH*0.55}; S.target={...S.box};
+    msg.classList.add('hidden'); badge.classList.remove('hidden');
+    dot.className='dot'; badgeText.textContent='foto · posicione arrastando';
+  };
+  img.src = URL.createObjectURL(f);
+});
+
+$('srcCam').onclick = ()=>{
+  S.source='cam'; S.frozen=false; press($('srcCam'),true); press($('srcPhoto'),false);
+  if(video.videoWidth) setSize(video.videoWidth, video.videoHeight); else startCamera();
+};
+$('srcPhoto').onclick = ()=> $('photoFile').click();
+
+function setMode(m){
+  S.mode=m; press($('modeAuto'), m==='auto'); press($('modeManual'), m==='manual');
+  $('posHint').textContent = m==='auto'
+    ? 'Aponte para uma lata ou garrafa. Arraste na imagem para corrigir.'
+    : 'Arraste para mover, pinça ou roda do mouse para redimensionar.';
+}
+$('modeAuto').onclick = ()=> setMode('auto');
+$('modeManual').onclick = ()=> setMode('manual');
+
+function setBlend(b){
+  S.blend=b; press($('blendLabel'), b==='label'); press($('blendSolid'), b==='solid');
+  $('rowLight').style.display = b==='label' ? 'block' : 'none';
+  $('blendHint').textContent = b==='label'
+    ? 'A arte é multiplicada pela luz do vídeo, então herda sombra e curvatura da lata real.'
+    : 'Lata renderizada com iluminação própria, por cima da cena. Útil quando não há lata física.';
+}
+$('blendLabel').onclick = ()=> setBlend('label');
+$('blendSolid').onclick = ()=> setBlend('solid');
+
+function slider(id, valId, key, fmt){
+  const el = $(id);
+  el.addEventListener('input', ()=>{ S[key]=parseFloat(el.value); $(valId).textContent = fmt(S[key]); });
+  $(valId).textContent = fmt(S[key]);
+}
+slider('sWidth','vWidth','widthF', v=>v.toFixed(2));
+slider('sHeight','vHeight','heightF', v=>v.toFixed(2));
+slider('sSpin','vSpin','spin', v=>Math.round(v)+'°');
+slider('sTilt','vTilt','tilt', v=>Math.round(v)+'°');
+slider('sAlpha','vAlpha','alpha', v=>Math.round(v*100)+'%');
+slider('sLight','vLight','light', v=>v.toFixed(2));
+
+$('btnAutoSpin').onclick = e=>{ S.autoSpin=!S.autoSpin; press(e.currentTarget, S.autoSpin); };
+
+$('btnFreeze').onclick = e=>{
+  if(!S.frozen){
+    const c = document.createElement('canvas'); c.width=srcW; c.height=srcH;
+    c.getContext('2d').drawImage(S.source==='photo'?photoImg:video,0,0,srcW,srcH);
+    frozenFrame = c; S.frozen = true; e.currentTarget.textContent = 'Voltar ao vivo';
+    badgeText.textContent = 'imagem congelada';
+  }else{
+    S.frozen = false; e.currentTarget.textContent = 'Congelar imagem';
+  }
+};
+
+$('btnSave').onclick = ()=>{
+  const a = document.createElement('a');
+  a.download = `mockup-lata-${Date.now()}.png`;
+  a.href = display.toDataURL('image/png');
+  a.click();
+};
+
+/* ---- arrastar e redimensionar sobre a imagem ---- */
+let drag=null;
+function toImage(e){
+  const r = display.getBoundingClientRect();
+  return { x:(e.clientX-r.left)*(srcW/r.width), y:(e.clientY-r.top)*(srcH/r.height) };
+}
+display.addEventListener('pointerdown', e=>{
+  display.setPointerCapture(e.pointerId); display.classList.add('dragging');
+  const p = toImage(e); drag = {x:p.x - S.box.cx, y:p.y - S.box.cy};
+});
+display.addEventListener('pointermove', e=>{
+  if(!drag) return;
+  const p = toImage(e);
+  S.target = {...S.box, cx:p.x-drag.x, cy:p.y-drag.y};
+  if(S.mode==='auto') setMode('manual');
+});
+display.addEventListener('pointerup', e=>{ drag=null; display.classList.remove('dragging'); });
+display.addEventListener('wheel', e=>{
+  e.preventDefault();
+  const f = e.deltaY>0 ? 0.96 : 1.04;
+  S.target = {...S.box, w:S.box.w*f, h:S.box.h*f};
+  if(S.mode==='auto') setMode('manual');
+},{passive:false});
+
+setBlend('label');
+startCamera();
+</script>
+</body>
+</html>
