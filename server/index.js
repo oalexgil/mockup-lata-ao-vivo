@@ -2,7 +2,12 @@ import http from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { generateScene } from './openai-provider.js';
+import { generateScene as generateOpenAIScene } from './openai-provider.js';
+import {
+  cloudflareConfigured,
+  cloudflareModel,
+  generateScene as generateCloudflareScene,
+} from './cloudflare-provider.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -22,6 +27,34 @@ const MIME = {
   '.webp': 'image/webp',
   '.ico': 'image/x-icon',
 };
+
+function providerState(env = process.env) {
+  const preferred = String(env.IMAGE_PROVIDER || 'cloudflare').trim().toLowerCase();
+  const cloudflare = cloudflareConfigured(env);
+  const openai = Boolean(env.OPENAI_API_KEY);
+
+  if (preferred === 'openai' && openai) {
+    return { provider: 'openai', configured: true, preferred, cloudflare, openai };
+  }
+  if (preferred === 'cloudflare' && cloudflare) {
+    return { provider: 'cloudflare', configured: true, preferred, cloudflare, openai };
+  }
+  if (cloudflare) return { provider: 'cloudflare', configured: true, preferred, cloudflare, openai };
+  if (openai) return { provider: 'openai', configured: true, preferred, cloudflare, openai };
+  return { provider: null, configured: false, preferred, cloudflare, openai };
+}
+
+async function generateWithConfiguredProvider(body) {
+  const state = providerState();
+  if (state.provider === 'cloudflare') return generateCloudflareScene(body);
+  if (state.provider === 'openai') return generateOpenAIScene(body);
+
+  const error = new Error(
+    'Nenhum gerador configurado. Para o modo gratuito, defina CLOUDFLARE_ACCOUNT_ID e CLOUDFLARE_API_TOKEN.'
+  );
+  error.statusCode = 503;
+  throw error;
+}
 
 function sendJson(res, status, payload) {
   res.writeHead(status, {
@@ -95,16 +128,23 @@ async function serveStatic(req, res) {
 const server = http.createServer(async (req, res) => {
   try {
     if (req.method === 'GET' && req.url?.startsWith('/api/health')) {
+      const state = providerState();
       return sendJson(res, 200, {
         ok: true,
-        generatorConfigured: Boolean(process.env.OPENAI_API_KEY),
-        provider: process.env.OPENAI_API_KEY ? 'openai' : null,
+        generatorConfigured: state.configured,
+        provider: state.provider,
+        preferredProvider: state.preferred,
+        providers: {
+          cloudflare: state.cloudflare,
+          openai: state.openai,
+        },
+        model: state.provider === 'cloudflare' ? cloudflareModel() : null,
       });
     }
 
     if (req.method === 'POST' && req.url?.startsWith('/api/generate-scene')) {
       const body = await readJson(req);
-      const result = await generateScene(body);
+      const result = await generateWithConfiguredProvider(body);
       return sendJson(res, 200, result);
     }
 
@@ -121,8 +161,13 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
+  const state = providerState();
   console.log(`Mockup Vision Studio em http://localhost:${PORT}`);
-  console.log(process.env.OPENAI_API_KEY
-    ? 'Gerador OpenAI configurado.'
-    : 'Gerador não configurado: defina OPENAI_API_KEY.');
+  if (state.provider === 'cloudflare') {
+    console.log(`Gerador Cloudflare configurado (${cloudflareModel()}).`);
+  } else if (state.provider === 'openai') {
+    console.log('Gerador OpenAI configurado como fallback.');
+  } else {
+    console.log('Gerador não configurado. Defina CLOUDFLARE_ACCOUNT_ID e CLOUDFLARE_API_TOKEN.');
+  }
 });
