@@ -9,28 +9,28 @@ const STYLE_LABELS = {
 };
 
 export function buildSceneBrief(input = {}) {
-  const product = clean(input.product);
-  const scene = clean(input.scene);
+  const request = clean(input.request || [input.product, input.scene].filter(Boolean).join('. '));
   const style = STYLE_LABELS[input.style] || clean(input.style) || STYLE_LABELS.commercial;
-  const surface = clean(input.surface) || 'superfície frontal limpa e visível';
+  const surface = clean(input.surface) || 'superfície(s) de mockup limpa(s), bem visível(is), sem oclusões desnecessárias';
+  const slotCount = Number(input.slotCount) > 0 ? Math.min(8, Number(input.slotCount)) : null;
   const notes = clean(input.notes);
 
   return {
-    product,
-    scene,
+    request,
     style,
     surface,
+    slotCount,
     notes,
     hasProductReference: Boolean(input.hasProductReference),
     hasSceneReference: Boolean(input.hasSceneReference),
-    hasArtwork: Boolean(input.hasArtwork),
   };
 }
 
 export function validateSceneBrief(brief) {
   const problems = [];
-  if (!brief?.product) problems.push('Descreva o produto.');
-  if (!brief?.scene) problems.push('Descreva o cenário ou composição.');
+  if (!brief?.request && !brief?.hasProductReference && !brief?.hasSceneReference) {
+    problems.push('Escreva o que precisa ou envie pelo menos uma imagem de referência.');
+  }
   return problems;
 }
 
@@ -40,20 +40,25 @@ export function buildGenerationPrompt(input = {}) {
   if (problems.length) return { prompt: '', problems, brief };
 
   const referenceHints = [
-    brief.hasProductReference ? 'Use a referência de produto para forma, material e proporções, sem copiar marcas ou textos.' : '',
-    brief.hasSceneReference ? 'Use a referência de cenário apenas para composição, atmosfera, luz e enquadramento.' : '',
+    brief.hasProductReference ? 'Use as referências de produto/modelo para forma, material, proporções e linguagem visual; não copie marcas, logos ou textos existentes.' : '',
+    brief.hasSceneReference ? 'Use as referências de cena/inspiração para composição, atmosfera, luz, enquadramento e direção de arte.' : '',
   ].filter(Boolean);
 
+  const slots = brief.slotCount
+    ? `Crie exatamente ${brief.slotCount} superfícies de mockup claramente separadas e utilizáveis na composição.`
+    : 'Quando o pedido implicar várias peças ou espaços de apresentação, crie superfícies de mockup claramente separadas e utilizáveis.';
+
   const lines = [
-    `Crie uma ${brief.style} mostrando ${brief.product}.`,
-    `Cena: ${brief.scene}.`,
-    `A superfície destinada ao mockup deve ser ${brief.surface}, com geometria legível e perspectiva natural.`,
-    'O produto deve estar SEM LOGO, SEM MARCA, SEM TEXTO e SEM RÓTULO legível na área personalizável.',
+    `Crie ${brief.style} a partir deste pedido: ${brief.request || 'use as referências enviadas como base do conceito'}.`,
+    `As superfícies destinadas ao mockup devem ser ${brief.surface}, com geometria legível e perspectiva natural.`,
+    slots,
+    'As áreas personalizáveis devem estar SEM LOGO, SEM MARCA, SEM TEXTO e SEM RÓTULO legível.',
+    'Não invente identidade visual. O Mockup Vision aplicará os arquivos originais depois da geração.',
     'Preserve material, textura, reflexos, sombras de contato, profundidade e iluminação realistas.',
-    'Evite elementos atravessando a superfície personalizável, salvo quando forem parte intencional da composição.',
+    'Evite elementos atravessando as superfícies personalizáveis, salvo quando forem parte intencional da composição.',
     ...referenceHints,
     brief.notes ? `Observações adicionais: ${brief.notes}.` : '',
-    'Entregue uma fotografia final plausível, pronta para receber a identidade visual posteriormente pelo Mockup Vision.',
+    'Entregue uma imagem final plausível, pronta para receber uma ou mais identidades visuais posteriormente pelo Mockup Vision.',
   ].filter(Boolean);
 
   return { prompt: lines.join('\n'), problems: [], brief };
