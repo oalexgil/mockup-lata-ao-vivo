@@ -1,46 +1,36 @@
 # Changelog
 
-## Unreleased — Mockup Vision V2
+## Unreleased
 
 ### Added
-- photo-first Studio for flat-surface mockups;
-- **Create scene / Use my photo** dual workflow;
-- brand-safe scene briefing that keeps logos/text out of generated scenes;
-- optional product and scene/style reference inputs;
-- generated-scene handoff back into the editor;
-- provider-agnostic server-side generation contract documentation;
-- local object-detection seed with GPU → CPU fallback;
-- four-corner perspective fitting;
-- Apply and Replace modes;
-- deterministic old-mockup neutralization;
-- scene-light preservation and blend/tone controls;
-- local PNG export;
-- regression coverage for planar geometry and scene-brief rules.
+- guided Studio UX organized around Brief → Scene → Arts → Mockup;
+- natural-language generation request with optional product/model and scene/inspiration references;
+- Generate and Iterate client contract with in-session version history;
+- provider-agnostic `/api/generate-scene` contract;
+- multi-file brand/artwork upload;
+- multiple editable mockup slots in one scene;
+- automatic artwork-to-slot assignment;
+- provider slot metadata normalization;
+- local multi-area detection fallback;
+- manual add/remove/reassign controls per mockup area;
+- per-area Apply/Replace and realism controls;
+- regression tests for multi-slot state and iterative generation requests.
 
 ### Changed
-- product positioning moves from live cylindrical camera mockups to a broader photo-first workflow: **Create → Detect → Apply**;
-- original cylindrical experience remains preserved as **Cylinder Lab**;
-- CI validates feature branches with Node.js 24.
+- Photo Studio now uses `studio-app.js` as the active V2 implementation;
+- scene briefing accepts either natural language, references, or both;
+- generated scenes can request up to eight mockup slots;
+- README and product vision now describe the guided multi-art workflow.
 
-### Known limitations
-- scene generation provider is not connected yet;
-- automatic detection still seeds a rectangle rather than exact perspective geometry;
-- Replace mode is neutralization, not semantic inpainting;
-- occlusion-aware masking is not implemented;
-- cylinders and bottles are deferred until planar workflow is validated.
-
-## 0.1.0 — Professional foundation
-
-### Added
-- professional product/research positioning;
-- architecture and validation documentation;
-- security and contribution guidance;
-- CI regression checks for the static runtime contract.
+### Preserved
+- `index.html` remains the Cylinder Lab for the later cylindrical/proxy-3D pass;
+- older V2 modules remain temporarily for comparison while the new Studio is validated.
 
 ### Clarified
-- automatic detection is a coarse bootstrap, not a can-specific classifier;
-- manual fitting is an intentional fallback;
-- third-party runtime/model assets are network dependencies even though user images remain local.
+- scene generation is not yet connected to a production provider;
+- generated slot metadata is optional and falls back to local detection/manual areas;
+- automatic detection proposes geometry but does not replace user correction;
+- old-art cleanup remains deterministic neutralization, not semantic inpainting.
 
 ## Prototype baseline
 
