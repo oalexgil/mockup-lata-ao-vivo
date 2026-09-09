@@ -2,50 +2,76 @@
 
 ## Product split
 
-Mockup Vision now has two explicit experiments:
+Mockup Vision now has two explicit product surfaces:
 
-1. **Photo Studio (`photo.html`)** — the active product direction for flat surfaces and existing-photo mockups;
-2. **Cylinder Lab (`index.html`)** — the preserved camera/cylindrical research prototype.
+1. **Studio (`photo.html`)** — active direction for AI-assisted scene creation and photo mockups on flat surfaces;
+2. **Cylinder Lab (`index.html`)** — preserved cylindrical/camera research prototype.
 
-Photo Studio is intentionally the simpler product surface. It gives us a stable geometry/editing foundation before returning to cans, bottles and proxy 3D.
+The Studio is organized around three engines:
+
+```text
+GENERATE → DETECT → APPLY
+```
+
+The goal is to let AI invent the product scene while Mockup Vision remains responsible for applying the final brand asset accurately.
 
 ## Current V2 architecture
 
 ```text
 photo.html
-└── photo-app.js
-    ├── local photo/artwork input
-    ├── MediaPipe detector bootstrap
-    ├── GPU → CPU detector fallback
-    ├── four-corner editing
-    ├── dense planar warp
-    ├── old-mockup neutralization
-    ├── lighting/blend controls
-    └── PNG export
-
-src/
-└── planar-core.js
-    ├── detector-box → quadrilateral seed
-    ├── bilinear surface mapping
-    ├── quad bounds / area guards
-    └── pointer corner selection
+├── scene-builder.js
+│   ├── product / scene brief
+│   ├── product reference input
+│   ├── scene/style reference input
+│   ├── brand-safe prompt preview
+│   └── generated-scene handoff
+│
+├── photo-app.js
+│   ├── local photo/artwork input
+│   ├── MediaPipe detector bootstrap
+│   ├── GPU → CPU detector fallback
+│   ├── four-corner editing
+│   ├── dense planar warp
+│   ├── old-mockup neutralization
+│   ├── lighting/blend controls
+│   └── PNG export
+│
+└── src/
+    ├── scene-brief.js
+    └── planar-core.js
 
 index.html
 └── preserved Cylinder Lab
 ```
 
-## V2 pipeline
+## V2 product pipeline
 
 ```text
-photo
+CREATE SCENE
+product + scene + references
   ↓
+brand-safe scene brief
+  ↓
+server-side generation adapter (planned)
+  ↓
+clean unbranded product scene
+
+OR
+
+USE MY PHOTO
+local image
+
+        ↓
+DETECT
 object detector seed (optional)
   ↓
 editable four-corner surface
-  ↓
+
+        ↓
+APPLY
 old-art neutralization (optional)
   ↓
-artwork preprocessing
+real artwork preprocessing
   ↓
 planar perspective warp
   ↓
@@ -54,12 +80,58 @@ scene-light preservation
 PNG export
 ```
 
-The automatic detector is deliberately non-authoritative. A generic object bounding box can be useful as a starting point, but it cannot guarantee the exact printable surface. The editable quadrilateral remains the source of truth.
+## Generate boundary
+
+Scene generation must be provider-agnostic from the editor's perspective.
+
+The application-level contract is:
+
+```text
+generateScene(sceneBrief, references) -> generatedImage
+```
+
+`src/scene-brief.js` owns the normalized scene brief and generation prompt rules. It intentionally instructs the generator to leave the customizable surface free from logos, brand text and readable labels.
+
+A production provider must be called through a server-side adapter. Provider API keys must not be embedded in browser JavaScript or persisted in browser storage.
+
+See `docs/GENERATION_API.md`.
+
+## Detect boundary
+
+The automatic detector is deliberately non-authoritative. A generic bounding box can be useful as a starting point, but it cannot guarantee the exact printable surface.
+
+The editable quadrilateral remains the source of truth.
+
+Detection initialization order:
+
+1. load MediaPipe WASM;
+2. try EfficientDet Lite2 / GPU;
+3. try Lite0 / GPU;
+4. try Lite2 / CPU;
+5. try Lite0 / CPU;
+6. if all fail, keep manual four-corner fitting fully operational.
+
+## Apply boundary
+
+The Apply engine owns all operations that must preserve the real brand asset:
+
+- artwork preprocessing;
+- planar perspective mapping;
+- replacement/neutralization of old mockups;
+- scene-light restoration;
+- blend/tone controls;
+- export.
+
+Generation must never be responsible for reproducing the final logo or label typography.
 
 ## Target module boundaries
 
 ```text
 src/
+├── generation/
+│   ├── scene-brief.js
+│   ├── generator-client.js
+│   └── provider-contract.js
 ├── core/
 │   ├── project-state.js
 │   └── mockup-engine.js
@@ -86,36 +158,15 @@ src/
     └── status.js
 ```
 
-## Detection policy
-
-Photo Studio should remain usable even if MediaPipe/model loading fails.
-
-Initialization order:
-
-1. load MediaPipe WASM;
-2. try EfficientDet Lite2 / GPU;
-3. try Lite0 / GPU;
-4. try Lite2 / CPU;
-5. try Lite0 / CPU;
-6. if all fail, keep four-corner manual fitting fully operational.
-
-Detection produces a **seed** only. Geometry remains editable by the user.
-
 ## Perspective rendering
 
-The current V2 renderer approximates a projective warp by splitting the artwork into a dense grid of affine triangles. This is lightweight, browser-native and visually adequate for a first pass.
+The current renderer approximates a projective warp by splitting artwork into a dense grid of affine triangles. This is lightweight, browser-native and visually adequate for the first pass.
 
-Later refinements can compare it against:
-
-- explicit homography rendering;
-- WebGL planar projection;
-- texture mapping on simple 3D proxy planes.
-
-We should only replace the current warp after visual fixtures show a measurable benefit.
+Later refinements can compare it against explicit homography rendering or WebGL planar projection. We should only replace the current method after visual fixtures show a measurable benefit.
 
 ## Existing-mockup replacement
 
-The current replacement pass blurs/neutralizes the selected region before new artwork is composited. It is intentionally local and deterministic.
+Current replacement is local deterministic blur/neutralization. It should not be described as semantic inpainting.
 
 Future levels:
 
@@ -124,22 +175,20 @@ Future levels:
 3. segmentation + inpainting;
 4. occlusion-aware compositing.
 
-The product should not describe level 1 as semantic object removal.
-
 ## Return to cylinders
 
-Cylinder Lab remains preserved so V2 can later reuse its strongest pieces:
+Cylinder Lab remains preserved so later versions can reuse:
 
 - cylinder geometry;
 - Three.js rendering;
 - edge-based refinement;
 - scene luminance compositing.
 
-The future cylindrical product should consume the same project state, editing controls and export pipeline as Photo Studio instead of rebuilding a separate UX.
+The future cylindrical product should consume the same generation, project state, editing controls and export pipeline as Studio.
 
 ## 2D-to-3D boundary
 
-A single image can support limited **proxy 3D** when the geometry is known or assumed (plane, box, cylinder, cone). It cannot faithfully reconstruct unseen arbitrary geometry.
+A single image can support limited **proxy 3D** when geometry is known or assumed (plane, box, cylinder, cone). It cannot faithfully reconstruct unseen arbitrary geometry.
 
 Any future rotation feature must distinguish:
 
@@ -149,12 +198,17 @@ Any future rotation feature must distinguish:
 
 ## Testing strategy
 
-Current automated coverage protects pure planar geometry. Next tests should add:
+Current automated coverage protects:
+
+- planar geometry;
+- scene brief validation;
+- brand-safe generation prompt semantics.
+
+Next tests should add:
 
 - known quadrilateral warp fixtures;
 - detector fallback-state tests;
+- generator-adapter contract tests;
 - export smoke tests;
 - visual before/after fixtures for replacement mode;
 - browser tests for pointer-based corner editing.
-
-Cylinder-specific line-fit/geometry tests stay separate from Photo Studio tests.
