@@ -15,6 +15,12 @@ function sceneIsReady() {
   return $('progress2')?.classList.contains('done') || false;
 }
 
+function providerLabel(provider) {
+  if (provider === 'cloudflare') return 'Cloudflare Workers AI';
+  if (provider === 'openai') return 'OpenAI';
+  return 'gerador';
+}
+
 async function checkGenerator() {
   const status = $('generateStatus');
   if (!status) return;
@@ -24,12 +30,12 @@ async function checkGenerator() {
     const health = await response.json();
     if (health.generatorConfigured) {
       if (!sceneIsReady()) {
-        status.textContent = 'Gerador conectado. Escreva o pedido e clique em “Gerar imagem”.';
+        status.textContent = `${providerLabel(health.provider)} conectado. Escreva o pedido e clique em “Gerar imagem”.`;
         status.className = 'status ok';
       }
       $('fallbackBox')?.classList.add('hidden');
     } else {
-      status.textContent = 'Gerador pronto no app, mas falta configurar OPENAI_API_KEY no ambiente do servidor.';
+      status.textContent = 'Gerador não configurado. Para o modo gratuito, adicione CLOUDFLARE_ACCOUNT_ID e CLOUDFLARE_API_TOKEN aos Codespaces Secrets.';
       status.className = 'status warn';
     }
   } catch {
