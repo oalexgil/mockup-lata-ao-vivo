@@ -1,11 +1,11 @@
 {
   "name": "mockup-vision",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
-  "description": "Photo-first mockup studio with scene briefing, planar perspective fitting and a preserved cylindrical vision lab.",
+  "description": "Guided photo-first mockup studio with scene generation contracts, multi-slot artwork placement and a preserved cylindrical vision lab.",
   "scripts": {
-    "check": "node --check scene-builder.js && node --check photo-app.js && node --check src/scene-brief.js && node --check src/planar-core.js",
+    "check": "node --check studio-app.js && node --check src/studio-core.js && node --check src/scene-brief.js && node --check src/planar-core.js && node --check photo-app.js && node --check scene-builder.js",
     "test": "node --test tests/*.test.js",
     "ci": "npm run check && npm test"
   },
