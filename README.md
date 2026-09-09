@@ -2,167 +2,200 @@
 
 **Create the scene. Apply your brand.**
 
-Mockup Vision is a photo-first mockup studio that separates two jobs that generative image models often mix badly:
+Mockup Vision is evolving into a guided photo-first mockup studio. The product separates scene generation from final brand application so AI can invent the product, composition and lighting without redrawing or distorting the user's real logo, label or artwork.
 
-1. **create the product scene** without branding;
-2. **apply the real logo/artwork afterwards** with perspective, lighting and manual control.
+> **Status:** functional V2 prototype. The guided editor, multi-art workflow, multi-slot placement and local rendering are implemented. The production image-generation provider still needs to be connected through a secure server-side adapter.
 
-The result is a cleaner product workflow: AI can invent the scene, but the final brand asset is not redrawn or distorted by the generator.
-
-> **Status:** functional prototype / product experiment. The planar editor works today; scene generation is already modeled in the UI and contract, while the production image-generation provider still needs a secure backend adapter.
-
-## Product flows
-
-### Create scene
-
-The V2 Studio can collect:
-
-- product description;
-- scene/composition description;
-- visual style;
-- desired mockup surface;
-- optional product reference image;
-- optional scene/style reference image;
-- additional notes.
-
-It produces a **brand-safe generation brief** that explicitly asks the generator for a product with no logo, brand text or readable label on the customizable area.
-
-Until a server-side generator adapter is connected, the prompt can be copied to an external image generator and the resulting image loaded back into Mockup Vision.
-
-### Use my photo
-
-The user can instead upload any existing photo or mockup and continue directly into the same editor.
-
-Both flows converge on:
+## The product flow
 
 ```text
-Create scene OR upload photo
+1. Describe / reference
         ↓
-Detect/edit target surface
+2. Generate / iterate
         ↓
-Upload real artwork
+3. Upload one or many artworks
         ↓
-Apply or Replace
+4. Detect or edit one or many mockup areas
         ↓
-Perspective + light + blend
+5. Auto-assign artwork to areas
         ↓
-Export PNG
+6. Tune realism
+        ↓
+7. Export PNG
 ```
 
-## Photo Studio
+The UI is intentionally centered on this flow instead of exposing the technical pipeline first.
 
-Open:
+## 1 — Describe what you need
+
+The user can start with:
+
+- a natural-language request;
+- product/model/object reference images;
+- scene/inspiration/style reference images;
+- or any combination of those inputs.
+
+A request can be simple:
 
 ```text
-photo.html
+recyclable cup tilted in motion, white background, soft studio light
 ```
 
-Current capabilities:
-
-- create-scene briefing workflow;
-- product and scene reference uploads for future generator integration;
-- photo-only editing — no camera required;
-- local MediaPipe object detection used to seed a surface box;
-- four draggable corners for exact perspective fitting;
-- grid-based perspective warp for artwork;
-- artwork zoom and rotation;
-- opacity, brightness, contrast and saturation controls;
-- Normal, Multiply, Overlay and Soft Light blend modes;
-- original-scene light/shadow preservation;
-- **Replace** mode that neutralizes an older mockup/label before applying the new artwork;
-- local PNG export.
-
-## Brand-safe scene generation
-
-The key product rule is simple:
-
-> **The generator creates the world. Mockup Vision applies the identity.**
-
-The generator is responsible for product form, material, composition, lighting and a clean customizable surface. It should not be asked to reproduce the final logo, label typography or brand artwork.
-
-The normalized contract lives in:
+or multi-surface:
 
 ```text
-src/scene-brief.js
+minimal presentation mockup with six graphic pieces on a neutral pink background,
+one of them displayed on a laptop screen
 ```
 
-The planned secure provider boundary is documented in:
+The user may also request an explicit number of customizable spaces.
+
+## 2 — Generate and iterate
+
+The Studio calls:
 
 ```text
-docs/GENERATION_API.md
+POST /api/generate-scene
 ```
 
-No provider API key should be embedded in browser JavaScript or persisted in `localStorage`.
+The same endpoint supports first generation and iteration. Generated versions are kept as a lightweight in-session history (`V1`, `V2`, `V3`…), allowing the user to select an earlier result and request a change in natural language.
 
-## Surface detection
+When the provider is not configured in the current environment, the UI exposes a manual import fallback so the rest of the Studio remains testable.
 
-Automatic detection is intentionally a **seed**, not an authority. The generic EfficientDet model finds plausible objects such as laptops, books, screens and packaging. Mockup Vision converts the best candidate into an editable surface, and the user finalizes geometry through four corner handles.
+See [docs/GENERATION_API.md](docs/GENERATION_API.md).
 
-That keeps automation useful without pretending the model inferred exact printable geometry.
+## Brand-safe generation
 
-## Replacing an existing mockup
+The generator follows one strict product rule:
 
-**Replace** mode supports photos that already contain a logo, screen image, label or prior mockup.
+> **The generator creates the world. Mockup Vision applies the brand.**
 
-The first implementation performs local blur/neutralization inside the selected quadrilateral before the new artwork is applied. It reduces old high-frequency text/logo detail while preserving part of the original lighting structure.
+Generation prompts explicitly request clean customizable areas with no readable logo, brand, label or invented identity. The original artwork is applied later by Mockup Vision.
 
-This is not semantic inpainting yet. Complex occlusion, reflections, folds and highly textured regions remain second-pass refinement work.
+This keeps brand fidelity outside the generative model.
+
+## 3 — Upload multiple artworks
+
+The user can upload one or many:
+
+- logos;
+- labels;
+- posters;
+- package fronts;
+- campaign pieces;
+- screen designs;
+- presentation assets.
+
+All files are loaded together and can be distributed automatically across the mockup areas.
+
+## 4 — Multi-slot mockups
+
+A **slot** represents one editable mockup area.
+
+Each slot has:
+
+- four-point geometry;
+- an assigned artwork;
+- Apply or Replace mode;
+- zoom and rotation;
+- opacity;
+- old-art neutralization;
+- lighting preservation;
+- brightness/contrast/saturation;
+- blend mode.
+
+A scene may contain one slot or many.
+
+Example:
+
+```text
+6 uploaded artworks
+        ↓
+6 generated/detected mockup slots
+        ↓
+automatic 1:1 assignment
+        ↓
+manual reassignment still available
+```
+
+If there are more slots than artworks, assignment cycles through the available assets instead of blocking the workflow.
+
+## Surface discovery
+
+Mockup Vision uses three levels:
+
+1. **provider slot metadata** — preferred when the generation backend can return mockup quadrilaterals;
+2. **local object detection** — MediaPipe/EfficientDet proposes several areas;
+3. **manual areas** — the user can add and edit any number of four-corner regions.
+
+Automation is always editable.
+
+## Existing mockup replacement
+
+**Replace** mode neutralizes part of the old artwork inside a selected region before the new artwork is rendered.
+
+The current version is deterministic blur/neutralization, not semantic inpainting. It works as a first-pass replacement while preserving much of the original light and texture.
+
+Future work will add:
+
+- segmentation;
+- occlusion-aware composition;
+- semantic inpainting;
+- better texture reconstruction.
+
+## Realism
+
+The current browser renderer combines:
+
+- dense perspective warp;
+- four-corner geometry;
+- artwork tone controls;
+- scene multiply/screen passes;
+- blend modes;
+- optional old-art cleanup.
+
+The goal is a plausible editable mockup, not a claim of perfect physical simulation.
+
+## Current V2 files
+
+```text
+photo.html                # guided Studio UI
+studio-app.js             # generation + multi-slot + rendering orchestration
+src/studio-core.js        # slot/version/generation request helpers
+src/scene-brief.js        # brand-safe prompt normalization
+src/planar-core.js        # planar geometry helpers
+
+docs/GENERATION_API.md    # secure provider contract
+docs/PRODUCT_VISION.md    # product UX and roadmap
+
+index.html                # preserved Cylinder Lab
+```
+
+The older `photo-app.js` and `scene-builder.js` are preserved temporarily while V2 is validated, but `photo.html` now uses `studio-app.js` as the active implementation.
 
 ## Cylinder Lab
 
-The original can/cylinder experiment remains preserved in `index.html` as **Cylinder Lab**:
+The original can/cylinder experiment remains in `index.html`:
 
 - camera/photo input;
 - EfficientDet bootstrap;
-- classical edge tracking;
-- cylinder estimation;
+- edge tracking;
+- cylinder fitting;
 - Three.js label rendering;
-- manual/four-corner fallbacks;
+- manual fallbacks;
 - PNG export.
 
-The current product focus is planar photography first. Cylinders and bottles return after the flat-surface editor is mature.
+It is intentionally paused while the planar Studio matures. Later cylinder/bottle work should reuse the same slot/project model instead of rebuilding a separate product UX.
 
-## 2D photo → 3D
+## 2D → 3D boundary
 
-A single 2D photo can support proxy 3D for known simple geometries, but it cannot faithfully reveal arbitrary hidden sides of an object.
+A single photo can support proxy 3D for assumed simple geometry, but cannot faithfully reveal arbitrary unseen sides of an object.
 
-Future cylinder work can fit a cylinder/cone/box proxy and enable constrained viewpoint changes. True free rotation of arbitrary photographed products requires additional depth or 3D reconstruction information and is not a current product claim.
+Future cylinder work may support constrained proxy rotation for cans, bottles and boxes. True arbitrary 3D reconstruction remains outside the current claim.
 
-## Architecture
+## Development
 
-```text
-photo.html
-├── scene-builder.js
-├── photo-app.js
-└── src/
-    ├── scene-brief.js
-    └── planar-core.js
-
-index.html              # preserved Cylinder Lab
-```
-
-Product pipeline:
-
-```text
-GENERATE
-  scene brief → provider adapter → clean scene image
-
-DETECT
-  object seed → editable quadrilateral
-
-APPLY
-  artwork → perspective → replacement → lighting → export
-```
-
-See [ARCHITECTURE.md](ARCHITECTURE.md).
-
-## Runtime dependencies
-
-The browser editor loads pinned MediaPipe Tasks Vision `0.10.14` and EfficientDet Lite2/Lite0 assets. Detector initialization tries GPU and then CPU.
-
-The scene-brief and planar geometry modules have no runtime dependency and are covered by Node.js regression tests.
-
-## Local development
+Serve the static Studio:
 
 ```bash
 python3 -m http.server 8000
@@ -174,62 +207,53 @@ Open:
 http://localhost:8000/photo.html
 ```
 
-Repository validation:
+Repository checks:
 
 ```bash
 npm run ci
 ```
 
-## Privacy
+The CI validates the active V2 modules and regression tests on Node 24.
 
-The current editor processes photos and artwork locally in the browser. Reference images selected for the not-yet-connected scene generator also remain local in this static V2.
+## Privacy and security
 
-When generation is connected, image/reference transmission must occur through a documented provider adapter with an explicit retention policy and server-side secret handling.
+Local editing remains browser-side. A production generator must use a server-side adapter; provider secrets must never live in browser JavaScript or `localStorage`.
 
-See [SECURITY.md](SECURITY.md).
+See [SECURITY.md](SECURITY.md) and [docs/GENERATION_API.md](docs/GENERATION_API.md).
 
-## Known limitations
+## Current limitations
 
-- the image-generation provider is not connected yet;
-- generic object detection does not identify every printable surface;
-- automatic detection currently creates a rectangular seed rather than a perspective-aware quad;
-- Replace mode is deterministic neutralization, not semantic inpainting;
-- occlusions are not segmented;
-- perspective uses a dense affine triangle-mesh approximation;
-- visual regression fixtures are still needed.
+- production image-generation provider is not connected yet;
+- generic object detection is not dedicated mockup-surface segmentation;
+- provider-returned slot metadata depends on the future backend implementation;
+- old-art removal is not semantic inpainting;
+- occlusion masks are not implemented;
+- visual regression fixtures still need expansion.
 
 ## Roadmap
 
-### Pass 1 — Photo Studio
+### V2.1 — generation integration
+- connect provider backend;
+- return generated image + mockup slot metadata;
+- preserve iteration/version history.
 
-- [x] upload/photo workflow;
-- [x] create-scene briefing UX;
-- [x] brand-safe generation prompt contract;
-- [x] four-corner perspective fitting;
-- [x] local object-detection seed;
-- [x] realistic blend/tone controls;
-- [x] old-mockup neutralization;
-- [x] PNG export;
-- [ ] connect server-side image-generation adapter;
-- [ ] smarter quadrilateral detection;
-- [ ] mask/occlusion support;
-- [ ] semantic inpainting option;
-- [ ] before/after comparison and presets.
+### V2.2 — smarter placement
+- dedicated surface/rectangle discovery;
+- occlusion masks;
+- stronger automatic slot proposals;
+- before/after comparison.
 
-### Pass 2 — Cylindrical return
+### V2.3 — replacement quality
+- semantic inpainting;
+- texture-aware reconstruction;
+- reflection/occlusion handling.
 
+### V3 — cylinders and proxy 3D
 - cans;
 - bottles;
-- cups and jars;
-- proxy 3D rotation;
-- shared material/light controls from Photo Studio.
-
-### Pass 3 — broader surfaces
-
-- boxes;
-- pouches;
-- screens;
-- garments where deformation can be modeled reliably.
+- cups/jars;
+- simple proxy object rotation;
+- shared Studio controls and multi-slot project state.
 
 ## License
 
