@@ -1,0 +1,14 @@
+{
+  "name": "mockup-vision",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser-based packaging vision prototype for cylindrical label mockups.",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "ci": "npm test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
