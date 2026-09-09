@@ -8,124 +8,128 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#0b0f10;--panel:#13191b;--panel2:#1b2326;--line:#2d373b;--ink:#edf2f3;--dim:#91a0a5;--accent:#00d8ff;--ok:#42d392;--warn:#f4b942;--mono:"Space Mono",ui-monospace,monospace}
-*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font-family:"DM Sans",system-ui,sans-serif}.app{display:grid;grid-template-columns:360px 1fr;min-height:100vh}.rail{padding:20px 20px 36px;background:var(--panel);border-right:1px solid var(--line);overflow:auto}.stage{position:relative;display:flex;align-items:center;justify-content:center;min-width:0;overflow:auto;padding:26px;background:#07090a}
-h1{font-size:20px;margin:0 0 4px}.sub{margin:0 0 18px;color:var(--dim);font-size:12.5px}.pill{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--line);padding:4px 8px;border-radius:999px;font:11px var(--mono);color:var(--dim);margin-bottom:18px}.pill b{color:var(--accent)}
-fieldset{border:0;border-top:1px solid var(--line);padding:16px 0 4px;margin:0}fieldset:first-of-type{border-top:0;padding-top:0}legend{font-size:12px;font-weight:700;color:var(--accent);padding-right:8px;text-transform:uppercase;letter-spacing:.04em}
-button,.filebtn,select,input[type=text],textarea{width:100%;margin-top:8px;padding:9px 11px;background:var(--panel2);border:1px solid var(--line);border-radius:4px;color:var(--ink);font:inherit;font-size:13px}button,.filebtn{cursor:pointer}.filebtn{display:block;text-align:center}button:hover,.filebtn:hover{border-color:#52707a}.primary{background:var(--accent);border-color:var(--accent);color:#07171b;font-weight:700}.secondary{border-color:#42606a}.seg{display:flex}.seg button{border-radius:0}.seg button:first-child{border-radius:4px 0 0 4px}.seg button:last-child{border-radius:0 4px 4px 0;border-left:0}.seg button[aria-pressed=true]{background:var(--accent);color:#07171b;border-color:var(--accent);font-weight:700}
-input[type=file]{display:none}.row{display:block;margin-top:12px}.rowhead{display:flex;justify-content:space-between;gap:10px;color:var(--dim);font-size:12px}.value{font:11px var(--mono);color:var(--accent)}input[type=range]{width:100%;accent-color:var(--accent)}.hint{font-size:11.5px;line-height:1.5;color:var(--dim);margin:8px 0 0}.status{margin-top:10px;padding:9px 10px;border:1px solid var(--line);border-radius:4px;font-size:11.5px;color:var(--dim);line-height:1.45}.status.ok{border-color:#245f48;color:#87deb7}.status.warn{border-color:#6e5823;color:#e9c866}.refname{font:10.5px var(--mono);color:var(--dim);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.prompt{min-height:150px;resize:vertical;font:11px/1.5 var(--mono)}.callout{padding:10px 11px;border:1px dashed #42606a;border-radius:4px;background:#111719;color:var(--dim);font-size:11.5px;line-height:1.5;margin-top:10px}.callout strong{color:var(--ink)}
-#display{display:block;max-width:100%;max-height:calc(100vh - 52px);box-shadow:0 20px 70px rgba(0,0,0,.35);touch-action:none;cursor:crosshair}.empty{position:absolute;text-align:center;color:var(--dim);max-width:430px;line-height:1.6}.empty strong{display:block;color:var(--ink);font-size:18px;margin-bottom:6px}.hidden{display:none!important}.topnote{position:absolute;top:12px;right:14px;background:rgba(11,15,16,.88);border:1px solid var(--line);padding:6px 9px;border-radius:4px;font:11px var(--mono);color:var(--dim)}
-@media(max-width:850px){.app{grid-template-columns:1fr;grid-template-rows:auto 1fr}.rail{border-right:0;border-bottom:1px solid var(--line)}.stage{min-height:55vh}#display{max-height:70vh}}
+:root{--bg:#0a0e0f;--panel:#121719;--panel2:#1a2124;--line:#2b3539;--ink:#edf2f3;--dim:#93a0a5;--accent:#00d8ff;--ok:#42d392;--warn:#f4b942;--danger:#ef6b73;--mono:"Space Mono",ui-monospace,monospace}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font-family:"DM Sans",system-ui,sans-serif}.app{display:grid;grid-template-columns:390px minmax(0,1fr);height:100vh}.rail{overflow:auto;padding:18px 18px 36px;background:var(--panel);border-right:1px solid var(--line)}.stage{position:relative;display:flex;align-items:center;justify-content:center;overflow:auto;padding:26px;background:#060809}.brand{display:flex;align-items:center;justify-content:space-between;gap:12px}.brand h1{font-size:21px;margin:0}.brand a{color:var(--dim);font-size:11px;text-decoration:none}.sub{margin:5px 0 15px;color:var(--dim);font-size:12.5px}.progress{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:18px}.progress div{padding:8px 7px;border:1px solid var(--line);border-radius:7px;color:var(--dim);font:10px var(--mono);text-align:center}.progress .done{border-color:#245f48;color:#8ce0bb;background:#102019}.progress .active{border-color:#356b76;color:var(--accent)}
+section.card{border:1px solid var(--line);border-radius:10px;background:#101517;margin-bottom:12px;overflow:hidden}.card-head{display:flex;align-items:center;gap:9px;padding:13px 14px;border-bottom:1px solid var(--line)}.num{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:#0b2a31;color:var(--accent);font:10px var(--mono)}.card-head strong{font-size:13px}.card-body{padding:13px 14px}label.caption{display:block;color:var(--dim);font-size:11.5px;margin:10px 0 5px}.hint{font-size:11.5px;color:var(--dim);line-height:1.5;margin:8px 0 0}.tiny{font-size:10.5px;color:var(--dim)}
+textarea,input[type=text],select,button,.filebtn{width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--ink);font:inherit;font-size:12.5px}textarea{resize:vertical;min-height:84px}button,.filebtn{cursor:pointer;text-align:center}.filebtn{display:block}.filebtn:hover,button:hover{border-color:#4b6670}.primary{background:var(--accent);border-color:var(--accent);color:#061619;font-weight:700}.secondary{border-color:#45626d}.danger{border-color:#63383c;color:#ff9aa1}.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}.stack{display:grid;gap:8px}.hidden{display:none!important}.status{margin-top:9px;padding:9px 10px;border:1px solid var(--line);border-radius:6px;color:var(--dim);font-size:11px;line-height:1.45}.status.ok{border-color:#245f48;color:#8ce0bb}.status.warn{border-color:#705a25;color:#e8c568}.versions{display:flex;gap:8px;overflow:auto;margin-top:10px}.version-card{width:86px;min-width:86px;padding:5px;background:#0d1214}.version-card img{width:100%;height:56px;object-fit:cover;border-radius:4px;display:block}.version-card span{display:block;margin-top:4px;font:10px var(--mono)}.version-card.active{border-color:var(--accent)}
+input[type=file]{display:none}.asset-list{display:grid;gap:6px;margin-top:8px}.asset-chip{display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:#0d1214}.asset-chip img{width:34px;height:34px;object-fit:cover;border-radius:4px}.asset-chip span{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.slots-list{display:grid;gap:7px;margin-top:8px}.slot-card{padding:8px;border:1px solid var(--line);border-radius:7px;background:#0d1214}.slot-card.active{border-color:var(--accent)}.slot-title{display:flex;justify-content:space-between;gap:8px;margin:0 0 6px;padding:0;border:0;background:transparent;text-align:left}.slot-title span{color:var(--dim);font-size:10px}.slot-card select{margin-bottom:6px}.slot-remove{padding:6px 8px;font-size:10.5px;color:#f69aa0}.adjustments.disabled{opacity:.42;pointer-events:none}.seg{display:flex}.seg button{border-radius:0}.seg button:first-child{border-radius:6px 0 0 6px}.seg button:last-child{border-radius:0 6px 6px 0;border-left:0}.seg button[aria-pressed=true]{background:var(--accent);color:#07171b;border-color:var(--accent);font-weight:700}.range{display:block;margin-top:10px}.range-head{display:flex;justify-content:space-between;color:var(--dim);font-size:11px}.range output{font:10px var(--mono);color:var(--accent)}input[type=range]{width:100%;accent-color:var(--accent)}
+#display{display:block;max-width:100%;max-height:calc(100vh - 52px);box-shadow:0 24px 80px rgba(0,0,0,.45);touch-action:none;cursor:crosshair}.empty{position:absolute;text-align:center;max-width:430px;color:var(--dim);line-height:1.6}.empty strong{display:block;color:var(--ink);font-size:19px;margin-bottom:6px}.canvas-hint{position:absolute;top:12px;right:14px;padding:6px 9px;border:1px solid var(--line);border-radius:5px;background:rgba(10,14,15,.9);color:var(--dim);font:10px var(--mono)}
+@media(max-width:900px){.app{grid-template-columns:1fr;grid-template-rows:auto 1fr;height:auto}.rail{border-right:0;border-bottom:1px solid var(--line);max-height:none}.stage{min-height:60vh}#display{max-height:72vh}}
 </style>
 </head>
 <body>
 <div class="app">
 <aside class="rail">
-  <h1>Mockup Vision</h1>
-  <p class="sub">Crie a cena. Aplique sua marca.</p>
-  <div class="pill"><b>V2</b> photo-first · brand-safe workflow</div>
+  <div class="brand"><h1>Mockup Vision</h1><a href="index.html">Cylinder Lab</a></div>
+  <p class="sub">Descreva. Gere. Aplique sua marca.</p>
 
-  <fieldset>
-    <legend>Fluxo</legend>
-    <div class="seg"><button id="flowGenerate" aria-pressed="true">Criar cena</button><button id="flowPhoto" aria-pressed="false">Usar minha foto</button></div>
-    <p class="hint">Nos dois caminhos, a identidade visual é aplicada depois pelo mesmo motor de mockup.</p>
-  </fieldset>
+  <div class="progress">
+    <div id="progress1" class="active">1 · Brief</div>
+    <div id="progress2">2 · Cena</div>
+    <div id="progress3">3 · Artes</div>
+    <div id="progress4">4 · Mockup</div>
+  </div>
 
-  <section id="generatePanel">
-    <fieldset>
-      <legend>1. Criar cena</legend>
-      <input id="sceneProduct" type="text" placeholder="Produto · ex.: copo reciclável inclinado">
-      <textarea id="sceneDescription" rows="3" placeholder="Cenário · ex.: fundo branco, iluminação soft de estúdio, sensação de movimento"></textarea>
-      <select id="sceneStyle">
-        <option value="commercial">Publicidade / produto</option>
-        <option value="ecommerce">E-commerce</option>
-        <option value="editorial">Editorial</option>
-        <option value="lifestyle">Lifestyle</option>
-        <option value="minimal">Minimalista</option>
-      </select>
-      <input id="sceneSurface" type="text" placeholder="Área do mockup · ex.: frente do copo limpa e visível">
-      <textarea id="sceneNotes" rows="2" placeholder="Observações opcionais"></textarea>
+  <section class="card">
+    <div class="card-head"><span class="num">01</span><strong>O que você precisa?</strong></div>
+    <div class="card-body">
+      <textarea id="mockupPrompt" placeholder="Ex.: apresentação minimalista com 6 peças gráficas sobre fundo rosa neutro; uma delas em uma tela de notebook. Iluminação suave e espaços limpos para inserir as artes."></textarea>
+      <div class="row2">
+        <select id="sceneStyle">
+          <option value="commercial">Publicidade / produto</option>
+          <option value="ecommerce">E-commerce</option>
+          <option value="editorial">Editorial</option>
+          <option value="lifestyle">Lifestyle</option>
+          <option value="minimal">Minimalista</option>
+        </select>
+        <select id="desiredSlots">
+          <option value="">Espaços: automático</option>
+          <option value="1">1 espaço</option><option value="2">2 espaços</option><option value="3">3 espaços</option><option value="4">4 espaços</option><option value="5">5 espaços</option><option value="6">6 espaços</option><option value="7">7 espaços</option><option value="8">8 espaços</option>
+        </select>
+      </div>
+      <input id="surfaceHint" type="text" placeholder="Opcional · como devem ser as áreas do mockup?">
+      <label class="caption">Produto / modelo / objeto de referência</label>
+      <label class="filebtn" for="productRefs">+ Adicionar imagens</label>
+      <input id="productRefs" type="file" accept="image/*" multiple>
+      <label class="caption">Cena / inspiração / estilo de referência</label>
+      <label class="filebtn" for="sceneRefs">+ Adicionar imagens</label>
+      <input id="sceneRefs" type="file" accept="image/*" multiple>
+      <button id="generateBtn" class="primary" style="margin-top:11px">Gerar imagem</button>
+      <div id="generateStatus" class="status">Escreva um pedido ou envie imagens de referência.</div>
 
-      <label class="filebtn" for="productReference">Referência do produto</label>
-      <input id="productReference" type="file" accept="image/*">
-      <div class="refname" id="productReferenceName">nenhuma referência</div>
+      <div id="versions" class="versions"></div>
+      <div id="iterationBox" class="hidden" style="margin-top:10px">
+        <textarea id="iterationPrompt" placeholder="O que você quer mudar nesta versão? Ex.: deixe o fundo mais claro e aumente a distância entre as peças."></textarea>
+        <button id="iterateBtn" class="secondary">Gerar nova versão</button>
+      </div>
 
-      <label class="filebtn" for="sceneReference">Referência de cenário / estilo</label>
-      <input id="sceneReference" type="file" accept="image/*">
-      <div class="refname" id="sceneReferenceName">nenhuma referência</div>
+      <div id="fallbackBox" class="hidden" style="margin-top:10px">
+        <p class="hint">Enquanto o provedor de geração não estiver conectado neste ambiente, você pode gerar externamente e continuar daqui.</p>
+        <label class="filebtn" for="generatedFallback">Importar imagem gerada</label>
+        <input id="generatedFallback" type="file" accept="image/*">
+      </div>
 
-      <button id="prepareSceneBtn" class="primary">Preparar briefing da cena</button>
-      <textarea id="promptPreview" class="prompt" readonly placeholder="O prompt brand-safe aparecerá aqui."></textarea>
-      <button id="copyPromptBtn" class="secondary">Copiar prompt</button>
-      <button id="downloadBriefBtn">Baixar briefing JSON</button>
-
-      <div class="callout"><strong>Por que sem marca?</strong><br>A IA cria produto + cenário sem logo, texto ou rótulo. A arte original entra depois, evitando distorções na identidade visual.</div>
-      <div class="status" id="sceneStatus">Preencha produto e cenário para preparar a cena.</div>
-
-      <label class="filebtn" for="generatedSceneFile">Usar imagem gerada</label>
-      <input id="generatedSceneFile" type="file" accept="image/*">
-      <p class="hint">Nesta etapa o provedor de geração ainda é externo. A integração será feita via backend/adapter, sem expor chave de API no navegador.</p>
-    </fieldset>
+      <details style="margin-top:10px"><summary class="tiny">Ou usar uma foto existente</summary>
+        <label class="filebtn" for="photoFile" style="margin-top:8px">Carregar foto / mockup existente</label>
+        <input id="photoFile" type="file" accept="image/*">
+      </details>
+    </div>
   </section>
 
-  <section id="photoPanel" class="hidden">
-    <fieldset>
-      <legend>1. Foto base</legend>
-      <label class="filebtn" for="photoFile">Escolher foto</label>
-      <p class="hint">Use uma foto própria, mockup existente ou a cena gerada no fluxo ao lado.</p>
-    </fieldset>
+  <section class="card">
+    <div class="card-head"><span class="num">02</span><strong>Suas artes</strong></div>
+    <div class="card-body">
+      <label class="filebtn" for="brandFiles">Enviar logo, rótulo ou peças</label>
+      <input id="brandFiles" type="file" accept="image/*" multiple>
+      <div id="assetCount" class="hint">nenhuma arte</div>
+      <div id="assetList" class="asset-list"></div>
+      <p class="hint">Envie várias imagens de uma vez. O sistema distribui automaticamente uma arte por área de mockup.</p>
+    </div>
   </section>
 
-  <input id="photoFile" type="file" accept="image/*">
+  <section class="card">
+    <div class="card-head"><span class="num">03</span><strong>Áreas do mockup</strong></div>
+    <div class="card-body">
+      <div class="row2"><button id="detectAreasBtn">Detectar áreas</button><button id="addAreaBtn">+ Adicionar área</button></div>
+      <button id="autoAssignBtn" class="secondary">Distribuir artes automaticamente</button>
+      <div id="slotsList" class="slots-list"></div>
+      <p class="hint">Cada área pode receber uma imagem diferente. Clique numa área para ajustar seus quatro cantos.</p>
+    </div>
+  </section>
 
-  <fieldset>
-    <legend>2. Superfície</legend>
-    <button id="detectBtn">Detectar superfície</button>
-    <button id="resetQuadBtn">Centralizar área manual</button>
-    <p class="hint">A detecção cria um ponto de partida. Os 4 cantos continuam sendo a fonte de verdade do encaixe.</p>
-  </fieldset>
+  <section class="card adjustments disabled" id="adjustments">
+    <div class="card-head"><span class="num">04</span><strong>Ajuste da área selecionada</strong></div>
+    <div class="card-body">
+      <div class="seg"><button id="modeApply" aria-pressed="true">Aplicar</button><button id="modeReplace" aria-pressed="false">Substituir existente</button></div>
+      <label class="range"><span class="range-head"><span>Zoom</span><output id="vZoom">100%</output></span><input id="sZoom" type="range" min="0.6" max="2" step="0.01" value="1"></label>
+      <label class="range"><span class="range-head"><span>Giro</span><output id="vRotate">0°</output></span><input id="sRotate" type="range" min="-180" max="180" step="1" value="0"></label>
+      <label class="range"><span class="range-head"><span>Opacidade</span><output id="vOpacity">100%</output></span><input id="sOpacity" type="range" min="0" max="1" step="0.01" value="1"></label>
+      <label class="range"><span class="range-head"><span>Neutralizar arte antiga</span><output id="vCleanup">0%</output></span><input id="sCleanup" type="range" min="0" max="1" step="0.01" value="0"></label>
+      <label class="range"><span class="range-head"><span>Preservar luz/sombra</span><output id="vLight">55%</output></span><input id="sLight" type="range" min="0" max="1" step="0.01" value="0.55"></label>
+      <label class="range"><span class="range-head"><span>Brilho</span></span><input id="sBrightness" type="range" min="0.5" max="1.5" step="0.01" value="1"></label>
+      <label class="range"><span class="range-head"><span>Contraste</span></span><input id="sContrast" type="range" min="0.5" max="1.6" step="0.01" value="1"></label>
+      <label class="range"><span class="range-head"><span>Saturação</span></span><input id="sSaturation" type="range" min="0" max="1.8" step="0.01" value="1"></label>
+      <label class="caption">Mistura</label>
+      <select id="blendMode"><option value="source-over">Normal</option><option value="multiply">Multiply</option><option value="overlay">Overlay</option><option value="soft-light">Soft light</option></select>
+    </div>
+  </section>
 
-  <fieldset>
-    <legend>3. Identidade</legend>
-    <label class="filebtn" for="artFile">Escolher logo / arte / novo mockup</label>
-    <input id="artFile" type="file" accept="image/*">
-    <label class="row"><span class="rowhead"><span>Zoom da arte</span><span class="value" id="vZoom">100%</span></span><input id="sZoom" type="range" min="0.6" max="2" step="0.01" value="1"></label>
-    <label class="row"><span class="rowhead"><span>Giro da arte</span><span class="value" id="vRotate">0°</span></span><input id="sRotate" type="range" min="-180" max="180" step="1" value="0"></label>
-  </fieldset>
-
-  <fieldset>
-    <legend>4. Aplicação</legend>
-    <div class="seg"><button id="modeApply" aria-pressed="true">Aplicar</button><button id="modeReplace" aria-pressed="false">Substituir</button></div>
-    <label class="row" id="cleanupRow"><span class="rowhead"><span>Neutralizar mockup antigo</span><span class="value" id="vCleanup">0%</span></span><input id="sCleanup" type="range" min="0" max="1" step="0.01" value="0"></label>
-    <p class="hint">Substituir suaviza detalhes antigos antes da nova arte, preservando iluminação e textura da foto.</p>
-  </fieldset>
-
-  <fieldset>
-    <legend>5. Realismo</legend>
-    <label class="row"><span class="rowhead"><span>Opacidade</span><span class="value" id="vOpacity">100%</span></span><input id="sOpacity" type="range" min="0" max="1" step="0.01" value="1"></label>
-    <label class="row"><span class="rowhead"><span>Preservar luz/sombra</span><span class="value" id="vLight">55%</span></span><input id="sLight" type="range" min="0" max="1" step="0.01" value="0.55"></label>
-    <label class="row"><span class="rowhead"><span>Brilho</span><span class="value" id="vBrightness">100%</span></span><input id="sBrightness" type="range" min="0.5" max="1.5" step="0.01" value="1"></label>
-    <label class="row"><span class="rowhead"><span>Contraste</span><span class="value" id="vContrast">100%</span></span><input id="sContrast" type="range" min="0.5" max="1.6" step="0.01" value="1"></label>
-    <label class="row"><span class="rowhead"><span>Saturação</span><span class="value" id="vSaturation">100%</span></span><input id="sSaturation" type="range" min="0" max="1.8" step="0.01" value="1"></label>
-    <label class="row"><span class="rowhead"><span>Mistura</span></span><select id="blendMode"><option value="source-over">Normal</option><option value="multiply">Multiply</option><option value="overlay">Overlay</option><option value="soft-light">Soft light</option></select></label>
-  </fieldset>
-
-  <fieldset>
-    <legend>6. Saída</legend>
-    <button id="toggleGuides">Ocultar guias</button>
-    <button class="primary" id="saveBtn">Salvar PNG</button>
-    <div class="status" id="status">Crie uma cena ou carregue uma foto para começar.</div>
-  </fieldset>
-
-  <p class="hint">O experimento cilíndrico continua preservado em <a href="index.html" style="color:var(--accent)">Cylinder Lab</a>.</p>
+  <section class="card">
+    <div class="card-head"><span class="num">05</span><strong>Finalizar</strong></div>
+    <div class="card-body stack">
+      <button id="toggleGuides">Ocultar guias</button>
+      <button id="saveBtn" class="primary">Salvar PNG</button>
+      <div id="status" class="status">Crie uma cena ou carregue uma foto para começar.</div>
+    </div>
+  </section>
 </aside>
+
 <main class="stage">
   <canvas id="display"></canvas>
-  <div class="empty" id="empty"><strong>Crie uma cena ou use uma foto</strong>Depois detecte a superfície e aplique a identidade visual.</div>
-  <div class="topnote hidden" id="topnote">arraste os 4 cantos</div>
+  <div id="empty" class="empty"><strong>Seu mockup começa aqui</strong>Descreva a cena ou envie uma referência. Depois o Mockup Vision aplica suas artes nas áreas detectadas.</div>
+  <div id="canvasHint" class="canvas-hint hidden">arraste os cantos da área selecionada</div>
 </main>
 </div>
-<script type="module" src="scene-builder.js"></script>
-<script type="module" src="photo-app.js"></script>
+<script type="module" src="studio-app.js"></script>
 </body>
 </html>
