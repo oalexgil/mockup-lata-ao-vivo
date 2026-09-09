@@ -93,11 +93,18 @@ function safeFilePath(urlPath) {
   return resolved;
 }
 
-function maybeInjectStudioUx(filePath, data) {
+function injectStudioHelpers(filePath, data) {
   if (path.basename(filePath) !== 'photo.html') return data;
-  const html = data.toString('utf8');
-  if (html.includes('studio-ux.js')) return Buffer.from(html);
-  return Buffer.from(html.replace('</body>', '<script type="module" src="studio-ux.js"></script>\n</body>'));
+  let html = data.toString('utf8');
+  const scripts = [
+    '<script src="studio-api-monitor.js"></script>',
+    '<script type="module" src="studio-ux.js"></script>',
+  ];
+  for (const script of scripts) {
+    const src = script.match(/src="([^"]+)"/)?.[1];
+    if (src && !html.includes(src)) html = html.replace('</body>', `${script}\n</body>`);
+  }
+  return Buffer.from(html);
 }
 
 async function serveStatic(req, res) {
@@ -109,7 +116,7 @@ async function serveStatic(req, res) {
     if (info.isDirectory()) filePath = path.join(filePath, 'index.html');
     let data = await readFile(filePath);
     const ext = path.extname(filePath).toLowerCase();
-    if (ext === '.html') data = maybeInjectStudioUx(filePath, data);
+    if (ext === '.html') data = injectStudioHelpers(filePath, data);
     res.writeHead(200, {
       'Content-Type': MIME[ext] || 'application/octet-stream',
       'Cache-Control': ext === '.html' || ext === '.js' ? 'no-store' : 'public, max-age=3600',
