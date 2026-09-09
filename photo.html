@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mockup Vision — Photo Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0b0f10;--panel:#13191b;--panel2:#1b2326;--line:#2d373b;--ink:#edf2f3;--dim:#91a0a5;--accent:#00d8ff;--ok:#42d392;--warn:#f4b942;--mono:"Space Mono",ui-monospace,monospace}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font-family:"DM Sans",system-ui,sans-serif}
+.app{display:grid;grid-template-columns:340px 1fr;min-height:100vh}.rail{padding:20px 20px 36px;background:var(--panel);border-right:1px solid var(--line);overflow:auto}.stage{position:relative;display:flex;align-items:center;justify-content:center;min-width:0;overflow:auto;padding:26px;background:#07090a}
+h1{font-size:20px;margin:0 0 4px}.sub{margin:0 0 18px;color:var(--dim);font-size:12.5px}.pill{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--line);padding:4px 8px;border-radius:999px;font:11px var(--mono);color:var(--dim);margin-bottom:18px}.pill b{color:var(--accent)}
+fieldset{border:0;border-top:1px solid var(--line);padding:16px 0 4px;margin:0}fieldset:first-of-type{border-top:0;padding-top:0}legend{font-size:12px;font-weight:700;color:var(--accent);padding-right:8px;text-transform:uppercase;letter-spacing:.04em}
+button,.filebtn,select{width:100%;margin-top:8px;padding:9px 11px;background:var(--panel2);border:1px solid var(--line);border-radius:4px;color:var(--ink);font:inherit;font-size:13px;cursor:pointer}.filebtn{display:block;text-align:center}button:hover,.filebtn:hover{border-color:#52707a}.primary{background:var(--accent);border-color:var(--accent);color:#07171b;font-weight:700}.seg{display:flex}.seg button{border-radius:0}.seg button:first-child{border-radius:4px 0 0 4px}.seg button:last-child{border-radius:0 4px 4px 0;border-left:0}.seg button[aria-pressed=true]{background:var(--accent);color:#07171b;border-color:var(--accent);font-weight:700}
+input[type=file]{display:none}.row{display:block;margin-top:12px}.rowhead{display:flex;justify-content:space-between;gap:10px;color:var(--dim);font-size:12px}.value{font:11px var(--mono);color:var(--accent)}input[type=range]{width:100%;accent-color:var(--accent)}.hint{font-size:11.5px;line-height:1.5;color:var(--dim);margin:8px 0 0}.status{margin-top:10px;padding:9px 10px;border:1px solid var(--line);border-radius:4px;font-size:11.5px;color:var(--dim);line-height:1.45}.status.ok{border-color:#245f48;color:#87deb7}.status.warn{border-color:#6e5823;color:#e9c866}
+#display{display:block;max-width:100%;max-height:calc(100vh - 52px);box-shadow:0 20px 70px rgba(0,0,0,.35);touch-action:none;cursor:crosshair}.empty{position:absolute;text-align:center;color:var(--dim);max-width:430px;line-height:1.6}.empty strong{display:block;color:var(--ink);font-size:18px;margin-bottom:6px}.hidden{display:none!important}.topnote{position:absolute;top:12px;right:14px;background:rgba(11,15,16,.88);border:1px solid var(--line);padding:6px 9px;border-radius:4px;font:11px var(--mono);color:var(--dim)}
+@media(max-width:850px){.app{grid-template-columns:1fr;grid-template-rows:auto 1fr}.rail{border-right:0;border-bottom:1px solid var(--line)}.stage{min-height:55vh}#display{max-height:70vh}}
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="rail">
+  <h1>Mockup Vision</h1>
+  <p class="sub">Photo Studio · mockups realistas em superfícies planas.</p>
+  <div class="pill"><b>V2</b> photo-first · processamento local</div>
+
+  <fieldset>
+    <legend>1. Foto base</legend>
+    <label class="filebtn" for="photoFile">Escolher foto</label>
+    <input id="photoFile" type="file" accept="image/*">
+    <button id="detectBtn">Detectar superfície</button>
+    <button id="resetQuadBtn">Centralizar área manual</button>
+    <p class="hint">A detecção automática é um ponto de partida. Arraste os 4 cantos para finalizar o encaixe.</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>2. Arte</legend>
+    <label class="filebtn" for="artFile">Escolher arte / novo mockup</label>
+    <input id="artFile" type="file" accept="image/*">
+    <label class="row"><span class="rowhead"><span>Zoom da arte</span><span class="value" id="vZoom">100%</span></span><input id="sZoom" type="range" min="0.6" max="2" step="0.01" value="1"></label>
+    <label class="row"><span class="rowhead"><span>Giro da arte</span><span class="value" id="vRotate">0°</span></span><input id="sRotate" type="range" min="-180" max="180" step="1" value="0"></label>
+  </fieldset>
+
+  <fieldset>
+    <legend>3. Modo</legend>
+    <div class="seg"><button id="modeApply" aria-pressed="true">Aplicar</button><button id="modeReplace" aria-pressed="false">Substituir</button></div>
+    <label class="row" id="cleanupRow"><span class="rowhead"><span>Neutralizar mockup antigo</span><span class="value" id="vCleanup">0%</span></span><input id="sCleanup" type="range" min="0" max="1" step="0.01" value="0"></label>
+    <p class="hint">Substituir suaviza detalhes do mockup antigo antes da nova arte, preservando a iluminação da foto.</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>4. Realismo</legend>
+    <label class="row"><span class="rowhead"><span>Opacidade</span><span class="value" id="vOpacity">100%</span></span><input id="sOpacity" type="range" min="0" max="1" step="0.01" value="1"></label>
+    <label class="row"><span class="rowhead"><span>Preservar luz/sombra</span><span class="value" id="vLight">55%</span></span><input id="sLight" type="range" min="0" max="1" step="0.01" value="0.55"></label>
+    <label class="row"><span class="rowhead"><span>Brilho</span><span class="value" id="vBrightness">100%</span></span><input id="sBrightness" type="range" min="0.5" max="1.5" step="0.01" value="1"></label>
+    <label class="row"><span class="rowhead"><span>Contraste</span><span class="value" id="vContrast">100%</span></span><input id="sContrast" type="range" min="0.5" max="1.6" step="0.01" value="1"></label>
+    <label class="row"><span class="rowhead"><span>Saturação</span><span class="value" id="vSaturation">100%</span></span><input id="sSaturation" type="range" min="0" max="1.8" step="0.01" value="1"></label>
+    <label class="row"><span class="rowhead"><span>Mistura</span></span><select id="blendMode"><option value="source-over">Normal</option><option value="multiply">Multiply</option><option value="overlay">Overlay</option><option value="soft-light">Soft light</option></select></label>
+  </fieldset>
+
+  <fieldset>
+    <legend>5. Saída</legend>
+    <button id="toggleGuides">Ocultar guias</button>
+    <button class="primary" id="saveBtn">Salvar PNG</button>
+    <div class="status" id="status">Carregue uma foto para começar.</div>
+  </fieldset>
+
+  <p class="hint">O modo cilíndrico original continua preservado em <a href="index.html" style="color:var(--accent)">Cylinder Lab</a>.</p>
+</aside>
+<main class="stage">
+  <canvas id="display"></canvas>
+  <div class="empty" id="empty"><strong>Comece por uma foto</strong>Depois envie a arte e ajuste os quatro cantos da superfície.</div>
+  <div class="topnote hidden" id="topnote">arraste os 4 cantos</div>
+</main>
+</div>
+<script type="module" src="photo-app.js"></script>
+</body>
+</html>
