@@ -2,16 +2,16 @@
 
 **Create the scene. Apply your brand.**
 
-Mockup Vision is evolving into a guided photo-first mockup studio. The product separates scene generation from final brand application so AI can invent the product, composition and lighting without redrawing or distorting the user's real logo, label or artwork.
+Mockup Vision is a guided photo-first mockup studio. It separates scene generation from final brand application so generative AI can create the product, composition and lighting without redrawing or distorting the user's real logo, label or artwork.
 
-> **Status:** functional V2 prototype. The guided editor, multi-art workflow, multi-slot placement and local rendering are implemented. The production image-generation provider still needs to be connected through a secure server-side adapter.
+> **Status:** functional V2 prototype. Cloudflare Workers AI is the default image-generation provider, OpenAI remains an optional fallback, and the browser editor already supports multi-art, multi-slot placement, perspective correction, realism controls and local PNG export.
 
-## The product flow
+## Product flow
 
 ```text
-1. Describe / reference
+1. Describe what you need
         ↓
-2. Generate / iterate
+2. Generate the scene
         ↓
 3. Upload one or many artworks
         ↓
@@ -24,33 +24,7 @@ Mockup Vision is evolving into a guided photo-first mockup studio. The product s
 7. Export PNG
 ```
 
-The UI is intentionally centered on this flow instead of exposing the technical pipeline first.
-
-## 1 — Describe what you need
-
-The user can start with:
-
-- a natural-language request;
-- product/model/object reference images;
-- scene/inspiration/style reference images;
-- or any combination of those inputs.
-
-A request can be simple:
-
-```text
-recyclable cup tilted in motion, white background, soft studio light
-```
-
-or multi-surface:
-
-```text
-minimal presentation mockup with six graphic pieces on a neutral pink background,
-one of them displayed on a laptop screen
-```
-
-The user may also request an explicit number of customizable spaces.
-
-## 2 — Generate and iterate
+## Cloudflare-first generation
 
 The Studio calls:
 
@@ -58,41 +32,39 @@ The Studio calls:
 POST /api/generate-scene
 ```
 
-The same endpoint supports first generation and iteration. Generated versions are kept as a lightweight in-session history (`V1`, `V2`, `V3`…), allowing the user to select an earlier result and request a change in natural language.
+Provider priority is:
 
-When the provider is not configured in the current environment, the UI exposes a manual import fallback so the rest of the Studio remains testable.
+```text
+Cloudflare Workers AI
+        ↓ fallback
+OpenAI (optional)
+        ↓ fallback
+Manual image import
+```
 
-See [docs/GENERATION_API.md](docs/GENERATION_API.md).
+The default Cloudflare model is:
+
+```text
+@cf/black-forest-labs/flux-1-schnell
+```
+
+The provider secret is kept server-side. Nothing is written to browser JavaScript or `localStorage`.
+
+Setup: [docs/CLOUDFLARE_SETUP.md](docs/CLOUDFLARE_SETUP.md)
 
 ## Brand-safe generation
 
-The generator follows one strict product rule:
+The core rule is:
 
 > **The generator creates the world. Mockup Vision applies the brand.**
 
-Generation prompts explicitly request clean customizable areas with no readable logo, brand, label or invented identity. The original artwork is applied later by Mockup Vision.
+Generation prompts request clean customizable areas with no readable logo, brand, label or invented identity. The original artwork is applied later by Mockup Vision.
 
-This keeps brand fidelity outside the generative model.
+## Multiple artworks and mockup areas
 
-## 3 — Upload multiple artworks
+The user can upload one or many logos, labels, posters, package fronts, campaign pieces, screen designs or presentation assets.
 
-The user can upload one or many:
-
-- logos;
-- labels;
-- posters;
-- package fronts;
-- campaign pieces;
-- screen designs;
-- presentation assets.
-
-All files are loaded together and can be distributed automatically across the mockup areas.
-
-## 4 — Multi-slot mockups
-
-A **slot** represents one editable mockup area.
-
-Each slot has:
+A **slot** represents one editable mockup area. Each slot has:
 
 - four-point geometry;
 - an assigned artwork;
@@ -104,44 +76,23 @@ Each slot has:
 - brightness/contrast/saturation;
 - blend mode.
 
-A scene may contain one slot or many.
-
-Example:
-
-```text
-6 uploaded artworks
-        ↓
-6 generated/detected mockup slots
-        ↓
-automatic 1:1 assignment
-        ↓
-manual reassignment still available
-```
-
-If there are more slots than artworks, assignment cycles through the available assets instead of blocking the workflow.
+A scene may contain one slot or many. Automatic assignment is editable.
 
 ## Surface discovery
 
-Mockup Vision uses three levels:
+Mockup Vision currently uses:
 
-1. **provider slot metadata** — preferred when the generation backend can return mockup quadrilaterals;
-2. **local object detection** — MediaPipe/EfficientDet proposes several areas;
-3. **manual areas** — the user can add and edit any number of four-corner regions.
+1. local object detection with MediaPipe/EfficientDet;
+2. manual four-corner areas;
+3. provider slot metadata when a provider supports it.
 
-Automation is always editable.
+Cloudflare scene generation is intentionally independent from slot detection, so the editor continues to work even when provider-side vision metadata is unavailable.
 
 ## Existing mockup replacement
 
 **Replace** mode neutralizes part of the old artwork inside a selected region before the new artwork is rendered.
 
-The current version is deterministic blur/neutralization, not semantic inpainting. It works as a first-pass replacement while preserving much of the original light and texture.
-
-Future work will add:
-
-- segmentation;
-- occlusion-aware composition;
-- semantic inpainting;
-- better texture reconstruction.
+The current version uses deterministic blur/neutralization rather than semantic inpainting. Future passes can add segmentation, occlusion-aware composition and texture reconstruction.
 
 ## Realism
 
@@ -159,33 +110,29 @@ The goal is a plausible editable mockup, not a claim of perfect physical simulat
 ## Current V2 files
 
 ```text
-photo.html                # guided Studio UI
-studio-app.js             # generation + multi-slot + rendering orchestration
-src/studio-core.js        # slot/version/generation request helpers
-src/scene-brief.js        # brand-safe prompt normalization
-src/planar-core.js        # planar geometry helpers
+photo.html                       # guided Studio UI
+studio-app.js                    # generation + multi-slot + rendering orchestration
+studio-ux.js                     # progressive UI + provider status
+studio-api-monitor.js            # visible backend error reporting
+src/studio-core.js               # browser-independent slot/version helpers
+src/scene-brief.js               # brand-safe prompt normalization
+src/planar-core.js               # planar geometry helpers
+server/index.js                  # Studio server + provider routing
+server/cloudflare-provider.js    # Cloudflare Workers AI adapter
+server/openai-provider.js        # optional OpenAI fallback
 
-docs/GENERATION_API.md    # secure provider contract
-docs/PRODUCT_VISION.md    # product UX and roadmap
+docs/CLOUDFLARE_SETUP.md         # Cloudflare setup
+docs/GENERATION_API.md           # provider contract
+docs/PRODUCT_VISION.md           # product UX and roadmap
 
-index.html                # preserved Cylinder Lab
+index.html                       # preserved Cylinder Lab
 ```
-
-The older `photo-app.js` and `scene-builder.js` are preserved temporarily while V2 is validated, but `photo.html` now uses `studio-app.js` as the active implementation.
 
 ## Cylinder Lab
 
-The original can/cylinder experiment remains in `index.html`:
+The original can/cylinder experiment remains in `index.html` with camera/photo input, EfficientDet bootstrap, edge tracking, cylinder fitting, Three.js label rendering, manual fallbacks and PNG export.
 
-- camera/photo input;
-- EfficientDet bootstrap;
-- edge tracking;
-- cylinder fitting;
-- Three.js label rendering;
-- manual fallbacks;
-- PNG export.
-
-It is intentionally paused while the planar Studio matures. Later cylinder/bottle work should reuse the same slot/project model instead of rebuilding a separate product UX.
+It is intentionally paused while the planar Studio matures.
 
 ## 2D → 3D boundary
 
@@ -195,16 +142,16 @@ Future cylinder work may support constrained proxy rotation for cans, bottles an
 
 ## Development
 
-Serve the static Studio:
+Run the full Studio server:
 
 ```bash
-python3 -m http.server 8000
+npm start
 ```
 
 Open:
 
 ```text
-http://localhost:8000/photo.html
+http://localhost:8000/
 ```
 
 Repository checks:
@@ -213,35 +160,38 @@ Repository checks:
 npm run ci
 ```
 
-The CI validates the active V2 modules and regression tests on Node 24.
+The CI validates active V2 modules and regression tests on Node 24.
 
 ## Privacy and security
 
-Local editing remains browser-side. A production generator must use a server-side adapter; provider secrets must never live in browser JavaScript or `localStorage`.
+Local editing remains browser-side. Provider secrets stay on the server. Never commit Cloudflare or OpenAI credentials.
 
-See [SECURITY.md](SECURITY.md) and [docs/GENERATION_API.md](docs/GENERATION_API.md).
+See [SECURITY.md](SECURITY.md), [docs/CLOUDFLARE_SETUP.md](docs/CLOUDFLARE_SETUP.md) and [docs/GENERATION_API.md](docs/GENERATION_API.md).
 
 ## Current limitations
 
-- production image-generation provider is not connected yet;
+- the current Cloudflare adapter is text-to-image first;
+- Cloudflare FLUX Schnell does not currently preserve uploaded reference images or previous-image edits in this adapter;
+- iteration on Cloudflare therefore regenerates from the combined text brief rather than performing true image-to-image editing;
 - generic object detection is not dedicated mockup-surface segmentation;
-- provider-returned slot metadata depends on the future backend implementation;
 - old-art removal is not semantic inpainting;
-- occlusion masks are not implemented;
+- occlusion masks are not implemented yet;
 - visual regression fixtures still need expansion.
+
+These boundaries are explicit so the product does not claim capabilities it does not yet have.
 
 ## Roadmap
 
-### V2.1 — generation integration
-- connect provider backend;
-- return generated image + mockup slot metadata;
-- preserve iteration/version history.
+### V2.1 — Cloudflare validation
+- validate real Cloudflare generations;
+- tune prompt quality and default steps;
+- improve provider errors and usage visibility.
 
-### V2.2 — smarter placement
+### V2.2 — references and smarter placement
+- add Cloudflare-compatible image-to-image/reference flow;
 - dedicated surface/rectangle discovery;
 - occlusion masks;
-- stronger automatic slot proposals;
-- before/after comparison.
+- stronger automatic slot proposals.
 
 ### V2.3 — replacement quality
 - semantic inpainting;
