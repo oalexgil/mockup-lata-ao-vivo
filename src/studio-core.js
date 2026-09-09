@@ -1,6 +1,3 @@
-import '../studio-api-monitor.js';
-import '../studio-ux.js';
-
 export function createSlot(id, quad, label = '') {
   return {
     id: String(id),
