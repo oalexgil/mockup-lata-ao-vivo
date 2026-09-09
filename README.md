@@ -1,144 +1,192 @@
 # Mockup Vision
 
-Browser-based computer-vision prototype for applying packaging artwork to a real cylindrical object in camera or photo input.
+Browser-based mockup studio for applying artwork to real photos with perspective fitting, local object detection and manual four-corner control.
 
-The project combines classical vision, object detection and WebGL rendering to estimate a can-like object's pose, fit a virtual cylinder and composite label artwork while preserving light and curvature from the captured scene.
+The project is evolving from a cylindrical live-camera experiment into a **photo-first mockup engine**. The current V2 branch focuses on flat surfaces because they are easier to validate, more useful for real client photos and a better foundation for later cylindrical and 3D work.
 
-> **Status:** functional prototype / research product. The automatic detector is a heuristic bootstrap, not a can-specific trained model, and manual fitting remains an intentional fallback.
+> **Status:** functional prototype / product experiment. Automatic detection is only a seed; the user remains in control of the final fit.
 
-## What it demonstrates
+## V2 direction
 
-- real-time camera and photo workflows;
-- MediaPipe object detection used only to seed the initial region;
-- classical edge tracking for continuous fitting;
-- cylinder geometry and label rendering with Three.js;
-- scene-aware label compositing using the real image luminance;
-- manual four-corner fitting when automation is unreliable;
-- fully client-side processing: images are not uploaded by the application.
+The primary workflow is now:
 
-## Why this project matters
+1. upload a base photo;
+2. upload artwork;
+3. detect a plausible object/surface locally;
+4. adjust the four corners manually;
+5. apply perspective and scene-aware compositing;
+6. optionally neutralize an older mockup/label underneath;
+7. export a local PNG.
 
-Most mockup tools either render a generic 3D product or require manual image editing. Mockup Vision explores a different workflow: use the client's real photo or camera feed, infer the product geometry and place the artwork directly on that object.
+The original cylindrical camera experiment remains preserved as **Cylinder Lab** in `index.html`. The new flat-surface workflow lives in `photo.html`.
 
-That makes the repository useful as a portfolio example of **computer vision + geometry + WebGL + product UX**, while still being honest about the prototype's current limits.
+## Photo Studio
 
-## Current architecture
-
-Today the runtime is intentionally simple and concentrated in a single `index.html`:
+Open:
 
 ```text
-index.html
-├── UI and controls
-├── camera / photo input
-├── MediaPipe detector bootstrap
-├── edge-based tracking
-├── geometry estimation
-├── Three.js cylinder rendering
-├── image compositing
-└── export to PNG
+photo.html
 ```
 
-This keeps deployment trivial, but it is now the main maintainability constraint. The target architecture is documented in [ARCHITECTURE.md](ARCHITECTURE.md).
+Current capabilities:
 
-## Runtime pipeline
+- photo-only workflow — no camera required;
+- local MediaPipe object detection used to seed a surface box;
+- four draggable corners for exact perspective fitting;
+- grid-based perspective warp for the artwork;
+- artwork zoom and rotation;
+- opacity, brightness, contrast and saturation controls;
+- Normal, Multiply, Overlay and Soft Light blend modes;
+- scene-light preservation pass so the result inherits part of the original shadows/highlights;
+- **Replace** mode that softens/neutralizes a previous mockup before applying the new artwork;
+- local PNG export;
+- no intentional upload of the user's photo or artwork.
 
-1. **Input** — camera or local photo.
-2. **Detection bootstrap** — EfficientDet Lite2, with Lite0 as model fallback.
-3. **Classical tracking** — vertical edge gradients refine the object's lateral boundaries.
-4. **Geometry** — line fitting estimates center, radius, height, roll and approximate tilt.
-5. **Rendering** — Three.js maps the uploaded artwork onto a virtual cylinder.
-6. **Compositing** — label mode multiplies the virtual artwork by luminance from the real scene.
-7. **Fallback** — manual mode and four-corner fitting stay available when automation is not trustworthy.
+## What “automatic detection” means
 
-## Dependencies
+The detector is not a universal mockup-surface model. It uses a generic EfficientDet model to find plausible objects such as laptops, screens, books and packaging, then converts the best bounding box into an editable four-corner surface.
 
-The current static prototype loads pinned browser dependencies from CDNs:
+That is intentionally conservative:
 
-- `@mediapipe/tasks-vision` `0.10.14`;
-- `three` `0.128.0`;
-- Google-hosted EfficientDet Lite2 and Lite0 model assets.
+- automation gets the user close;
+- four-corner fitting provides precision;
+- the product never needs to pretend the detector understood geometry it did not actually infer.
 
-There is no application backend and no inference API.
+## Replacing an existing mockup
+
+The V2 **Replace** mode is designed for photos that already contain artwork, a screen image or an existing label.
+
+The first implementation uses a local blur/neutralization pass inside the selected quadrilateral before applying the new art. This reduces high-frequency text/logo detail while retaining much of the original lighting structure.
+
+It is useful for first-pass replacement, but it is **not semantic inpainting**. Complex occlusion, reflections, folds or highly textured labels may still require a future inpainting/segmentation layer.
+
+## Realism controls
+
+The engine currently combines:
+
+- perspective fitting;
+- user-adjusted quadrilateral geometry;
+- image blend modes;
+- artwork tone controls;
+- original-scene multiply/screen passes;
+- optional cleanup of an existing mockup.
+
+The goal is not to generate a new scene. It is to make the uploaded artwork inherit enough geometry and lighting from the existing photo to look plausible and editable.
+
+## Cylinder Lab
+
+`index.html` keeps the original cylindrical experiment:
+
+- camera/photo input;
+- EfficientDet bootstrap;
+- classical edge tracking;
+- cylinder estimation;
+- Three.js label rendering;
+- four-corner/manual fallbacks;
+- PNG export.
+
+This code is intentionally preserved while Photo Studio matures. Later work can reuse the stronger V2 UX and editing pipeline when cylindrical surfaces return.
+
+## 2D photo → 3D rotation
+
+A single 2D photo can support **proxy 3D** for simple known geometries, but not faithful arbitrary-object reconstruction.
+
+Future cylindrical work can fit a proxy cylinder/cone/box and allow limited viewpoint changes. True free rotation of an arbitrary photographed object would require additional depth/3D reconstruction information and is outside the current V2 claim.
+
+## Architecture
+
+```text
+photo.html
+photo-app.js
+src/
+└── planar-core.js
+
+index.html              # preserved Cylinder Lab
+```
+
+Target direction:
+
+```text
+src/
+├── core/
+├── detection/
+├── fitting/
+├── editing/
+├── surfaces/
+├── rendering/
+└── ui/
+```
+
+The next refactor should move browser-independent geometry and compositing decisions out of `photo-app.js` without changing the validated UX.
+
+## Runtime dependencies
+
+The current browser prototype loads pinned MediaPipe Tasks Vision `0.10.14` and EfficientDet Lite2/Lite0 model assets. Detector initialization tries GPU first and CPU second.
+
+The planar geometry core has no runtime dependency and is covered by Node.js tests.
 
 ## Local development
-
-Camera access requires a secure context. `localhost` is allowed for development.
 
 ```bash
 python3 -m http.server 8000
 ```
 
-Then open `http://localhost:8000`.
+Then open:
 
-For repository checks:
-
-```bash
-npm test
+```text
+http://localhost:8000/photo.html
 ```
 
-No package installation is required for the current test suite.
+Repository validation:
 
-## Using the prototype
+```bash
+npm run ci
+```
 
-### Artwork
+## Privacy
 
-Use a wide label image intended to wrap around a cylinder. Seamless left/right edges produce the best result.
-
-### Automatic fitting
-
-The detector does **not** use a can-specific model. It accepts plausible COCO classes such as bottle, cup, vase and bowl, then classical edge tracking takes over. Detection is therefore best understood as a coarse seed, not proof that the object is a can.
-
-### Manual fitting
-
-Manual mode is a first-class feature, not an error state. You can drag, resize, adjust rotation, snap to edges or mark four corners directly.
-
-### Composition modes
-
-- **Label attached:** preserves scene luminance so the label inherits real shadow and curvature cues.
-- **3D can:** renders the body and label with Three.js lighting when no physical can is available.
-
-## Privacy and security
-
-The application processes camera frames, photos and artwork in the browser. The current code does not intentionally upload those user inputs. Third-party runtime assets are still loaded from CDN/model hosts, so offline-first and supply-chain hardening remain future work.
+Photos and artwork are processed in the browser by the application. The code does not intentionally upload user inputs. Third-party model/runtime assets are still fetched from external hosts.
 
 See [SECURITY.md](SECURITY.md).
 
-## Validation
-
-A visually convincing result is not the same thing as a geometrically accurate fit. Before treating the engine as production-ready, validate it across:
-
-- can sizes and aspect ratios;
-- camera distances and angles;
-- textured and low-contrast backgrounds;
-- lighting conditions;
-- desktop and mobile browsers;
-- manual vs automatic fitting accuracy.
-
-The proposed protocol is in [VALIDATION.md](VALIDATION.md).
-
 ## Known limitations
 
-- EfficientDet is not trained specifically for cans in this workflow;
-- edge tracking depends on visible lateral contrast;
-- top-ellipse tilt is an approximation;
-- a single HTML file contains most runtime responsibilities;
-- WebGL/MediaPipe behavior varies by device and browser;
-- there is no automated visual-regression benchmark yet.
+- generic object detection does not directly detect every printable surface;
+- automatic detection currently produces a rectangular seed, not a perspective-aware quadrilateral;
+- replacement mode neutralizes old artwork but does not perform semantic inpainting;
+- occlusions are not segmented yet;
+- the perspective warp uses a dense affine triangle mesh approximation;
+- visual quality still needs fixture-based regression testing across real photographs.
 
 ## Roadmap
 
-1. separate detection, tracking, geometry, rendering and compositing into modules;
-2. add GPU → CPU detector initialization fallback and explicit runtime diagnostics;
-3. create image fixtures and quantitative fitting benchmarks;
-4. support multiple packaging profiles such as bottle, cup and box;
-5. move CDN dependencies toward a reproducible build or vendored deployment;
-6. add a polished client-photo workflow for commercial mockup generation.
+### Pass 1 — Photo Studio
 
-## Repository quality
+- [x] flat-surface photo workflow;
+- [x] four-corner perspective fitting;
+- [x] local object-detection seed;
+- [x] realistic blend/tone controls;
+- [x] old-mockup neutralization;
+- [x] PNG export;
+- [ ] smarter quadrilateral/surface detection;
+- [ ] mask/occlusion support;
+- [ ] semantic inpainting option;
+- [ ] project presets and before/after comparison.
 
-This branch adds CI and regression checks around the current static runtime so future refactors can preserve important behavior before the monolith is split.
+### Pass 2 — Cylindrical return
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [CHANGELOG.md](CHANGELOG.md).
+- cans;
+- bottles;
+- cups and jars;
+- proxy 3D rotation;
+- reusable material/light controls from Photo Studio.
+
+### Pass 3 — broader surfaces
+
+- boxes;
+- pouches;
+- screens;
+- garments where deformation can be modeled reliably.
 
 ## License
 
