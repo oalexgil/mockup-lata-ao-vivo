@@ -2,15 +2,24 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildGenerationPrompt, buildSceneBrief, validateSceneBrief } from '../src/scene-brief.js';
 
-test('scene brief requires product and scene', () => {
-  const brief = buildSceneBrief({ product: 'copo reciclável' });
-  assert.deepEqual(validateSceneBrief(brief), ['Descreva o cenário ou composição.']);
+test('scene brief accepts a natural-language request', () => {
+  const brief = buildSceneBrief({ request: 'copo reciclável em fundo branco' });
+  assert.deepEqual(validateSceneBrief(brief), []);
 });
 
-test('generation prompt protects the artwork surface from invented branding', () => {
+test('scene brief also accepts reference-only workflows', () => {
+  const brief = buildSceneBrief({ hasProductReference: true });
+  assert.deepEqual(validateSceneBrief(brief), []);
+});
+
+test('scene brief rejects an entirely empty request', () => {
+  const brief = buildSceneBrief({});
+  assert.deepEqual(validateSceneBrief(brief), ['Escreva o que precisa ou envie pelo menos uma imagem de referência.']);
+});
+
+test('generation prompt protects customizable surfaces from invented branding', () => {
   const { prompt, problems } = buildGenerationPrompt({
-    product: 'copo reciclável inclinado em movimento',
-    scene: 'fundo branco, iluminação soft de estúdio',
+    request: 'copo reciclável inclinado em movimento, fundo branco, iluminação soft de estúdio',
     style: 'commercial',
     surface: 'frente do copo limpa e bem visível',
     hasProductReference: true,
@@ -18,16 +27,14 @@ test('generation prompt protects the artwork surface from invented branding', ()
   assert.equal(problems.length, 0);
   assert.match(prompt, /SEM LOGO, SEM MARCA, SEM TEXTO/i);
   assert.match(prompt, /copo reciclável inclinado em movimento/i);
-  assert.match(prompt, /fundo branco, iluminação soft de estúdio/i);
-  assert.match(prompt, /referência de produto/i);
+  assert.match(prompt, /referências de produto\/modelo/i);
 });
 
-test('artwork is intentionally excluded from scene generation semantics', () => {
+test('generation prompt can explicitly request multiple mockup spaces', () => {
   const { prompt } = buildGenerationPrompt({
-    product: 'caixa de cosmético',
-    scene: 'pedestal de pedra em estúdio',
-    hasArtwork: true,
+    request: 'apresentação minimalista de peças gráficas',
+    slotCount: 6,
   });
-  assert.match(prompt, /identidade visual posteriormente pelo Mockup Vision/i);
-  assert.doesNotMatch(prompt, /aplique a logo/i);
+  assert.match(prompt, /exatamente 6 superfícies de mockup/i);
+  assert.match(prompt, /uma ou mais identidades visuais/i);
 });
