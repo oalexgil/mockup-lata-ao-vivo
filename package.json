@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node server/index.js",
-    "check": "node --check studio-app.js && node --check src/studio-core.js && node --check src/scene-brief.js && node --check src/planar-core.js && node --check server/index.js && node --check server/openai-provider.js && node --check photo-app.js && node --check scene-builder.js",
+    "check": "node --check studio-app.js && node --check studio-ux.js && node --check src/studio-core.js && node --check src/scene-brief.js && node --check src/planar-core.js && node --check server/index.js && node --check server/openai-provider.js && node --check photo-app.js && node --check scene-builder.js",
     "test": "node --test tests/*.test.js",
     "ci": "npm run check && npm test"
   },
