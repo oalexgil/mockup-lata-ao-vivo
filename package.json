@@ -1,12 +1,13 @@
 {
   "name": "mockup-vision",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Browser-based packaging vision prototype for cylindrical label mockups.",
+  "description": "Browser-based photo mockup studio with planar perspective fitting and a preserved cylindrical vision lab.",
   "scripts": {
+    "check": "node --check photo-app.js && node --check src/planar-core.js",
     "test": "node --test tests/*.test.js",
-    "ci": "npm test"
+    "ci": "npm run check && npm test"
   },
   "engines": {
     "node": ">=20"
