@@ -60,6 +60,13 @@ function safeFilePath(urlPath) {
   return resolved;
 }
 
+function maybeInjectStudioUx(filePath, data) {
+  if (path.basename(filePath) !== 'photo.html') return data;
+  const html = data.toString('utf8');
+  if (html.includes('studio-ux.js')) return Buffer.from(html);
+  return Buffer.from(html.replace('</body>', '<script type="module" src="studio-ux.js"></script>\n</body>'));
+}
+
 async function serveStatic(req, res) {
   let filePath = safeFilePath(req.url || '/');
   if (!filePath) return sendJson(res, 403, { error: 'Caminho inválido.' });
@@ -67,14 +74,16 @@ async function serveStatic(req, res) {
   try {
     const info = await stat(filePath);
     if (info.isDirectory()) filePath = path.join(filePath, 'index.html');
-    const data = await readFile(filePath);
+    let data = await readFile(filePath);
     const ext = path.extname(filePath).toLowerCase();
+    if (ext === '.html') data = maybeInjectStudioUx(filePath, data);
     res.writeHead(200, {
       'Content-Type': MIME[ext] || 'application/octet-stream',
       'Cache-Control': ext === '.html' || ext === '.js' ? 'no-store' : 'public, max-age=3600',
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'no-referrer',
     });
+    if (req.method === 'HEAD') return res.end();
     res.end(data);
   } catch (error) {
     if (error?.code === 'ENOENT') return sendJson(res, 404, { error: 'Arquivo não encontrado.' });
