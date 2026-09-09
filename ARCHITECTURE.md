@@ -1,96 +1,160 @@
 # Architecture
 
-## Current state
+## Product split
 
-The deployed prototype is a static browser application concentrated in `index.html`. It contains UI, camera/photo input, object detection, edge tracking, geometry estimation, Three.js rendering, compositing and PNG export.
+Mockup Vision now has two explicit experiments:
 
-This is effective for experimentation but creates three risks:
+1. **Photo Studio (`photo.html`)** — the active product direction for flat surfaces and existing-photo mockups;
+2. **Cylinder Lab (`index.html`)** — the preserved camera/cylindrical research prototype.
 
-1. changes in one subsystem can accidentally affect unrelated behavior;
-2. geometry and tracking logic are difficult to test in isolation;
-3. device/runtime fallbacks are mixed with product UI code.
+Photo Studio is intentionally the simpler product surface. It gives us a stable geometry/editing foundation before returning to cans, bottles and proxy 3D.
 
-## Target architecture
+## Current V2 architecture
+
+```text
+photo.html
+└── photo-app.js
+    ├── local photo/artwork input
+    ├── MediaPipe detector bootstrap
+    ├── GPU → CPU detector fallback
+    ├── four-corner editing
+    ├── dense planar warp
+    ├── old-mockup neutralization
+    ├── lighting/blend controls
+    └── PNG export
+
+src/
+└── planar-core.js
+    ├── detector-box → quadrilateral seed
+    ├── bilinear surface mapping
+    ├── quad bounds / area guards
+    └── pointer corner selection
+
+index.html
+└── preserved Cylinder Lab
+```
+
+## V2 pipeline
+
+```text
+photo
+  ↓
+object detector seed (optional)
+  ↓
+editable four-corner surface
+  ↓
+old-art neutralization (optional)
+  ↓
+artwork preprocessing
+  ↓
+planar perspective warp
+  ↓
+scene-light preservation
+  ↓
+PNG export
+```
+
+The automatic detector is deliberately non-authoritative. A generic object bounding box can be useful as a starting point, but it cannot guarantee the exact printable surface. The editable quadrilateral remains the source of truth.
+
+## Target module boundaries
 
 ```text
 src/
-├── input/
-│   ├── camera.js
-│   └── photo.js
+├── core/
+│   ├── project-state.js
+│   └── mockup-engine.js
 ├── detection/
 │   ├── mediapipe-detector.js
 │   └── detector-policy.js
-├── tracking/
-│   ├── edge-map.js
-│   ├── line-fit.js
-│   └── cylinder-tracker.js
-├── geometry/
-│   ├── cylinder-fit.js
-│   ├── pose.js
-│   └── guards.js
+├── fitting/
+│   ├── planar-core.js
+│   ├── homography.js
+│   └── quad-editor.js
+├── editing/
+│   ├── replacement.js
+│   ├── lighting-match.js
+│   └── tone.js
+├── surfaces/
+│   ├── planar.js
+│   ├── screen.js
+│   └── box-front.js
 ├── rendering/
-│   ├── three-scene.js
-│   └── label-cylinder.js
-├── compositing/
-│   ├── label-blend.js
+│   ├── warp-mesh.js
 │   └── export.js
-├── ui/
-│   ├── controls.js
-│   └── status.js
-└── app.js
-
-tests/
-├── geometry/
-├── tracking/
-├── runtime/
-└── fixtures/
+└── ui/
+    ├── controls.js
+    └── status.js
 ```
 
-## Boundaries
+## Detection policy
 
-### Input
-Owns camera permissions, camera selection, source orientation and local photo loading. It should not know anything about MediaPipe or Three.js.
+Photo Studio should remain usable even if MediaPipe/model loading fails.
 
-### Detection
-Produces coarse object candidates. The detector is only a bootstrap mechanism and must never be treated as authoritative geometry.
+Initialization order:
 
-### Tracking
-Consumes a frame and a seed region and returns edge evidence. It should be deterministic and testable with image fixtures.
+1. load MediaPipe WASM;
+2. try EfficientDet Lite2 / GPU;
+3. try Lite0 / GPU;
+4. try Lite2 / CPU;
+5. try Lite0 / CPU;
+6. if all fail, keep four-corner manual fitting fully operational.
 
-### Geometry
-Converts edge evidence into center, radius, height, roll and tilt. Sanity guards belong here so impossible fits are rejected before rendering.
+Detection produces a **seed** only. Geometry remains editable by the user.
 
-### Rendering
-Owns the virtual cylinder and label texture. It should consume geometry but not inspect camera pixels.
+## Perspective rendering
 
-### Compositing
-Combines the rendered label with the real image and exports the final result.
+The current V2 renderer approximates a projective warp by splitting the artwork into a dense grid of affine triangles. This is lightweight, browser-native and visually adequate for a first pass.
 
-### UI
-Maps controls and diagnostics to the domain modules. Manual fitting remains supported even when detector/tracker modules are unavailable.
+Later refinements can compare it against:
 
-## Runtime resilience
+- explicit homography rendering;
+- WebGL planar projection;
+- texture mapping on simple 3D proxy planes.
 
-The intended detector initialization policy is:
+We should only replace the current warp after visual fixtures show a measurable benefit.
 
-1. MediaPipe WASM available?
-2. try Lite2 on GPU;
-3. try Lite2 on CPU;
-4. try Lite0 on GPU;
-5. try Lite0 on CPU;
-6. if all fail, keep photo/manual mode fully usable and explain the failure.
+## Existing-mockup replacement
 
-The current code already falls back from Lite2 to Lite0 and then to manual mode. CPU delegate fallback is the next runtime improvement.
+The current replacement pass blurs/neutralizes the selected region before new artwork is composited. It is intentionally local and deterministic.
+
+Future levels:
+
+1. blur/neutralization — current;
+2. texture-aware clone/reconstruction;
+3. segmentation + inpainting;
+4. occlusion-aware compositing.
+
+The product should not describe level 1 as semantic object removal.
+
+## Return to cylinders
+
+Cylinder Lab remains preserved so V2 can later reuse its strongest pieces:
+
+- cylinder geometry;
+- Three.js rendering;
+- edge-based refinement;
+- scene luminance compositing.
+
+The future cylindrical product should consume the same project state, editing controls and export pipeline as Photo Studio instead of rebuilding a separate UX.
+
+## 2D-to-3D boundary
+
+A single image can support limited **proxy 3D** when the geometry is known or assumed (plane, box, cylinder, cone). It cannot faithfully reconstruct unseen arbitrary geometry.
+
+Any future rotation feature must distinguish:
+
+- proxy geometric rotation;
+- depth-assisted approximation;
+- true multi-view / reconstructed 3D.
 
 ## Testing strategy
 
-Before splitting the monolith, preserve the current runtime contracts with static regression tests. After extraction, add:
+Current automated coverage protects pure planar geometry. Next tests should add:
 
-- deterministic unit tests for line fitting and geometry guards;
-- fixture-based tracking tests;
-- browser smoke tests for camera/model initialization states;
-- visual benchmark images with expected fit tolerances.
+- known quadrilateral warp fixtures;
+- detector fallback-state tests;
+- export smoke tests;
+- visual before/after fixtures for replacement mode;
+- browser tests for pointer-based corner editing.
 
-## Non-goals
-
-A framework migration is not a goal by itself. The project can remain lightweight; modularity and testability matter more than adopting a large frontend stack.
+Cylinder-specific line-fit/geometry tests stay separate from Photo Studio tests.
