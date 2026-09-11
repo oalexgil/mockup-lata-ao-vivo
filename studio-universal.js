@@ -15,6 +15,8 @@ const U = {
   plan: null,
   baseDataUrl: null,
   finalized: false,
+  surfaceValidated: false,
+  mappingStatus: 'idle',
 };
 
 const overlay = document.createElement('canvas');
@@ -31,6 +33,11 @@ function setFlowStatus(message, kind = '') {
   if (!el) return;
   el.textContent = message;
   el.className = `auto-status ${kind}`.trim();
+}
+
+function setFinalizeAvailability() {
+  const button = $('finalizeAiBtn');
+  if (button) button.disabled = !U.surfaceValidated || !U.mapping.length;
 }
 
 function syncOverlayGeometry() {
@@ -254,7 +261,8 @@ function mappingList() {
     const row = document.createElement('div');
     row.className = 'tiny';
     const art = slot.artworkIndex == null ? 'sem arte' : `Arte ${slot.artworkIndex + 1}`;
-    row.textContent = `Área ${slot.index} · ${slot.label} ← ${art}`;
+    const state = U.surfaceValidated ? '' : ' · provisória';
+    row.textContent = `Área ${slot.index} · ${slot.label} ← ${art}${state}`;
     box.appendChild(row);
   });
 }
@@ -266,6 +274,9 @@ async function analyzeLayout() {
 
   const button = $('autoApplyFlowBtn');
   if (button) button.disabled = true;
+  U.surfaceValidated = false;
+  U.mappingStatus = 'analyzing';
+  setFinalizeAvailability();
   setFlowStatus('A IA está identificando as superfícies de aplicação…');
   try {
     await loadArtworks();
@@ -289,12 +300,31 @@ async function analyzeLayout() {
     U.mapping = mapArtworksToSlots(files.length, U.slots);
     U.plan = null;
     U.finalized = false;
+    U.mappingStatus = result.mappingStatus || (result.surfaceValidated === false ? 'fallback' : 'validated');
+    U.surfaceValidated = result.surfaceValidated !== false && U.mappingStatus === 'validated' && U.slots.length > 0;
     renderOverlay({ guides: true });
     mappingList();
-    setFlowStatus(`${universalMappingMessage(files.length, U.slots.length)} Revise as guias numeradas antes de finalizar.`, U.slots.length ? 'ok' : 'warn');
-    document.dispatchEvent(new CustomEvent('mockup:mapping-ready', { detail: { slots: U.slots.length } }));
+    setFinalizeAvailability();
+
+    if (!U.surfaceValidated) {
+      setFlowStatus(result.warning || 'A IA não conseguiu validar a superfície. Revise ou tente novamente.', 'warn');
+    } else {
+      setFlowStatus(`${universalMappingMessage(files.length, U.slots.length)} Revise as guias numeradas antes de finalizar.`, 'ok');
+    }
+    document.dispatchEvent(new CustomEvent('mockup:mapping-ready', {
+      detail: { slots: U.slots.length, validated: U.surfaceValidated, status: U.mappingStatus },
+    }));
   } catch (error) {
     console.warn(error);
+    U.slots = [];
+    U.mapping = [];
+    U.plan = null;
+    U.finalized = false;
+    U.surfaceValidated = false;
+    U.mappingStatus = 'error';
+    overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+    mappingList();
+    setFinalizeAvailability();
     setFlowStatus(`Falha ao identificar áreas com IA: ${error.message}`, 'warn');
   } finally {
     if (button) button.disabled = false;
@@ -302,7 +332,10 @@ async function analyzeLayout() {
 }
 
 async function finalizeWithAI() {
-  if (!U.mapping.length) return setFlowStatus('Primeiro identifique as áreas do mockup.', 'warn');
+  if (!U.mapping.length || !U.surfaceValidated) {
+    setFinalizeAvailability();
+    return setFlowStatus('A IA não conseguiu validar a superfície. Revise ou tente novamente.', 'warn');
+  }
   const button = $('finalizeAiBtn');
   if (button) button.disabled = true;
   setFlowStatus('A IA está analisando luz, material e integração sem redesenhar sua arte…');
@@ -318,13 +351,16 @@ async function finalizeWithAI() {
     U.plan = result;
     U.finalized = true;
     renderOverlay({ guides: false });
-    setFlowStatus('Finalização concluída. A arte original foi preservada; a IA ajustou apenas parâmetros de integração visual.', 'ok');
+    const fallbackNote = result.refinementStatus === 'fallback'
+      ? ' Foram mantidos parâmetros conservadores locais porque a IA não retornou um plano válido.'
+      : '';
+    setFlowStatus(`Finalização concluída. A arte original foi preservada; a IA ajustou apenas parâmetros de integração visual.${fallbackNote}`, result.refinementStatus === 'fallback' ? 'warn' : 'ok');
     document.dispatchEvent(new CustomEvent('mockup:ai-finalized', { detail: { plan: result } }));
   } catch (error) {
     console.warn(error);
     setFlowStatus(`Não foi possível finalizar com IA: ${error.message}`, 'warn');
   } finally {
-    if (button) button.disabled = false;
+    setFinalizeAvailability();
   }
 }
 
@@ -366,9 +402,10 @@ function boot() {
     U.mapping = [];
     U.plan = null;
     U.finalized = false;
+    U.surfaceValidated = false;
+    U.mappingStatus = 'idle';
     overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
-    const button = $('finalizeAiBtn');
-    if (button) button.disabled = true;
+    setFinalizeAvailability();
     const expected = $('brandFiles')?.files?.length || 0;
     if (expected) {
       setFlowStatus('Artes carregadas. Preparando identificação automática das áreas…');
@@ -376,10 +413,7 @@ function boot() {
       analyzeLayout();
     }
   });
-  document.addEventListener('mockup:mapping-ready', () => {
-    const button = $('finalizeAiBtn');
-    if (button) button.disabled = !U.mapping.length;
-  });
+  document.addEventListener('mockup:mapping-ready', setFinalizeAvailability);
   window.addEventListener('resize', () => {
     syncOverlayGeometry();
     if (U.mapping.length) renderOverlay({ guides: !U.finalized });
