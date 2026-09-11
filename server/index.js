@@ -10,6 +10,7 @@ import {
 } from './cloudflare-provider.js';
 import {
   analyzeRefinement,
+  analyzeSingleApplication,
   analyzeUniversalLayout,
   visionModel,
 } from './vision-provider.js';
@@ -155,7 +156,11 @@ const server = http.createServer(async (req, res) => {
         vision: {
           configured: state.cloudflare,
           model: state.cloudflare ? visionModel() : null,
-          capabilities: ['generic-slot-detection', 'brand-safe-refinement-plan'],
+          capabilities: [
+            'single-art-application-plan',
+            'generic-slot-detection',
+            'brand-safe-refinement-plan',
+          ],
         },
       });
     }
@@ -163,6 +168,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && req.url?.startsWith('/api/generate-scene')) {
       const body = await readJson(req);
       const result = await generateWithConfiguredProvider(body);
+      return sendJson(res, 200, result);
+    }
+
+    if (req.method === 'POST' && req.url?.startsWith('/api/apply-plan')) {
+      const body = await readJson(req);
+      const result = await analyzeSingleApplication(body);
       return sendJson(res, 200, result);
     }
 
