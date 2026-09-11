@@ -4,6 +4,7 @@ const nativeFetch = window.fetch.bind(window);
 let freshSessionPending = false;
 let hiddenVersionCount = 0;
 let versionObserver = null;
+let assetObserver = null;
 
 function fidelitySettings() {
   return {
@@ -95,9 +96,13 @@ function addStudioStyles() {
     #mockupApplyInstruction{min-height:74px!important;margin:4px 0 8px!important}
     #advancedMappingBtn{border-style:dashed!important;color:#b9c8d4!important}
     .auto-status.ok{color:#72deb1!important}.auto-status.warn{color:#f1c572!important}
+    .asset-chip{padding:8px!important;gap:9px!important;align-items:center!important}.asset-chip img{width:42px!important;height:42px!important}.asset-chip span{flex:1;min-width:0}
+    .asset-actions{display:flex;gap:5px;margin-left:auto}.asset-action{width:auto!important;padding:6px 8px!important;font-size:9.5px!important;border-radius:7px!important}.asset-delete{color:#ff9aa4!important;border-color:#5f343c!important}.asset-replace{color:#a8dce7!important}
+    .multi-art-panel{display:none;padding:10px 11px;margin:8px 0;border:1px solid #30485e;border-radius:10px;background:#0d1822;font-size:10.5px;line-height:1.45;color:#9eb4c6}.multi-art-panel.visible{display:block}.multi-art-panel strong{display:block;color:#dfeaf2;margin-bottom:3px;font-size:11px}
+    .export-panel{display:grid;gap:9px;padding:11px;border:1px solid #2d4052;border-radius:10px;background:#0d161f}.export-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}.export-panel label{display:grid;gap:5px;color:#8fa4b6;font-size:10px}.export-panel select{min-height:38px}.export-note{font-size:9.5px;line-height:1.4;color:#7f94a7}.export-button{min-height:43px}.jpeg-quality.hidden{display:none}
     .reset-flash{animation:resetPulse .42s ease}@keyframes resetPulse{0%{opacity:.55}100%{opacity:1}}
     *{scrollbar-width:thin;scrollbar-color:#34495e transparent}
-    @media(max-width:900px){.app{grid-template-columns:1fr}.rail{box-shadow:none}.stage{padding:18px}.fidelity-checks{grid-template-columns:1fr}}
+    @media(max-width:900px){.app{grid-template-columns:1fr}.rail{box-shadow:none}.stage{padding:18px}.fidelity-checks,.export-grid{grid-template-columns:1fr}}
   `;
   document.head.appendChild(style);
 }
@@ -120,6 +125,94 @@ function watchVersionHistory() {
   versionObserver.observe(versions, { childList: true });
 }
 
+function replaceBrandFileList(files) {
+  const input = $('brandFiles');
+  if (!input) return;
+  const transfer = new DataTransfer();
+  files.forEach((file) => transfer.items.add(file));
+  input.files = transfer.files;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function deleteBrandFile(index) {
+  const files = [...($('brandFiles')?.files || [])];
+  if (index < 0 || index >= files.length) return;
+  files.splice(index, 1);
+  replaceBrandFileList(files);
+}
+
+function replaceBrandFile(index) {
+  const files = [...($('brandFiles')?.files || [])];
+  if (index < 0 || index >= files.length) return;
+  const picker = document.createElement('input');
+  picker.type = 'file';
+  picker.accept = 'image/*';
+  picker.addEventListener('change', () => {
+    const replacement = picker.files?.[0];
+    if (!replacement) return;
+    files[index] = replacement;
+    replaceBrandFileList(files);
+  }, { once: true });
+  picker.click();
+}
+
+function decorateAssetList() {
+  const box = $('assetList');
+  if (!box) return;
+  [...box.querySelectorAll('.asset-chip')].forEach((row, index) => {
+    if (row.querySelector('.asset-actions')) return;
+    const actions = document.createElement('div');
+    actions.className = 'asset-actions';
+    actions.innerHTML = `
+      <button type="button" class="asset-action asset-replace" title="Substituir esta arte">Trocar</button>
+      <button type="button" class="asset-action asset-delete" title="Excluir esta arte">Excluir</button>`;
+    actions.querySelector('.asset-replace')?.addEventListener('click', () => replaceBrandFile(index));
+    actions.querySelector('.asset-delete')?.addEventListener('click', () => deleteBrandFile(index));
+    row.appendChild(actions);
+  });
+}
+
+function watchAssetList() {
+  const box = $('assetList');
+  if (!box || assetObserver) return;
+  assetObserver = new MutationObserver(() => {
+    decorateAssetList();
+    updateMultiArtUX();
+  });
+  assetObserver.observe(box, { childList: true, subtree: true });
+  decorateAssetList();
+}
+
+function updateMultiArtUX() {
+  const count = $('brandFiles')?.files?.length || 0;
+  const panel = $('multiArtPanel');
+  const fidelityPanel = document.querySelector('.fidelity-panel');
+  const mode = $('mockupFidelityMode');
+  const checks = ['preserveAspectRatio', 'limitDeformation', 'safeMargins'];
+
+  if (panel) {
+    panel.classList.toggle('visible', count > 1);
+    if (count > 1) panel.innerHTML = `<strong>${count} artes carregadas · modo multi-art</strong>A IA procura ${count} áreas compatíveis e distribui uma arte por área. Os arquivos originais são aplicados pelo renderer para preservar proporção e identidade visual.`;
+  }
+
+  if (count > 1) {
+    const slots = $('desiredSlots');
+    if (slots && [...slots.options].some((option) => Number(option.value) === count)) slots.value = String(count);
+    if (mode) {
+      mode.value = 'exact';
+      mode.disabled = true;
+    }
+    checks.forEach((id) => { if ($(id)) { $(id).checked = true; $(id).disabled = true; } });
+    if ($('fidelityDescription')) $('fidelityDescription').textContent = 'Multi-art usa os arquivos originais no mapeamento determinístico. A IA escolhe as áreas; o navegador preserva as artes.';
+    fidelityPanel?.classList.add('multi-art');
+  } else {
+    if (mode) mode.disabled = false;
+    checks.forEach((id) => { if ($(id)) $(id).disabled = false; });
+    if ($('fidelityDescription')) $('fidelityDescription').textContent = fidelityDescription(mode?.value || 'exact');
+    fidelityPanel?.classList.remove('multi-art');
+  }
+}
+
 function softResetStudio() {
   const hasWork = !$('empty')?.classList.contains('hidden') || Boolean($('brandFiles')?.files?.length) || Boolean($('mockupPrompt')?.value?.trim());
   if (hasWork && !window.confirm('Começar um novo mockup? A cena, as artes e o histórico visual desta sessão serão limpos.')) return;
@@ -138,6 +231,9 @@ function softResetStudio() {
   if ($('mockupFidelityMode')) $('mockupFidelityMode').value = 'exact';
   for (const id of ['preserveAspectRatio', 'limitDeformation', 'safeMargins']) if ($(id)) $(id).checked = true;
   if ($('fidelityDescription')) $('fidelityDescription').textContent = fidelityDescription('exact');
+  if ($('mockupExportFormat')) $('mockupExportFormat').value = 'png';
+  if ($('mockupExportScale')) $('mockupExportScale').value = '1';
+  if ($('mockupJpegQuality')) $('mockupJpegQuality').value = '0.92';
 
   for (const id of ['productRefs', 'sceneRefs', 'photoFile', 'generatedFallback']) clearFileInput(id);
   clearFileInput('brandFiles');
@@ -170,6 +266,7 @@ function softResetStudio() {
     flowStatus.className = 'auto-status';
   }
 
+  updateMultiArtUX();
   document.querySelector('.rail')?.classList.add('reset-flash');
   setTimeout(() => document.querySelector('.rail')?.classList.remove('reset-flash'), 450);
   document.dispatchEvent(new CustomEvent('mockup:soft-reset'));
@@ -215,10 +312,111 @@ function addFidelityControls() {
     <div id="fidelityDescription" class="fidelity-description">${fidelityDescription('exact')}</div>`;
   anchor.insertAdjacentElement('beforebegin', panel);
 
+  const multi = document.createElement('div');
+  multi.id = 'multiArtPanel';
+  multi.className = 'multi-art-panel';
+  panel.insertAdjacentElement('beforebegin', multi);
+
   $('mockupFidelityMode')?.addEventListener('change', (event) => {
     const description = $('fidelityDescription');
     if (description) description.textContent = fidelityDescription(event.target.value);
   });
+  updateMultiArtUX();
+  return true;
+}
+
+function compositeVisibleMockup(scale = 1, jpeg = false) {
+  const base = $('display');
+  if (!base?.width || !base?.height || !$('empty')?.classList.contains('hidden')) return null;
+  const maxDimension = 8192;
+  const requestedScale = Math.max(1, Number(scale) || 1);
+  const safeScale = Math.min(requestedScale, maxDimension / Math.max(base.width, base.height));
+  const width = Math.max(1, Math.round(base.width * safeScale));
+  const height = Math.max(1, Math.round(base.height * safeScale));
+  const out = document.createElement('canvas');
+  out.width = width;
+  out.height = height;
+  const outCtx = out.getContext('2d');
+  outCtx.imageSmoothingEnabled = true;
+  outCtx.imageSmoothingQuality = 'high';
+  if (jpeg) {
+    outCtx.fillStyle = '#ffffff';
+    outCtx.fillRect(0, 0, width, height);
+  }
+  outCtx.drawImage(base, 0, 0, width, height);
+  const overlay = $('universalOverlay');
+  if (overlay?.width && overlay?.height && overlay.style.display !== 'none') {
+    outCtx.drawImage(overlay, 0, 0, width, height);
+  }
+  return { canvas: out, safeScale };
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+function exportMockup() {
+  const format = $('mockupExportFormat')?.value || 'png';
+  const requestedScale = Number($('mockupExportScale')?.value) || 1;
+  const jpeg = format === 'jpeg';
+  const quality = Math.max(0.5, Math.min(1, Number($('mockupJpegQuality')?.value) || 0.92));
+  const prepared = compositeVisibleMockup(requestedScale, jpeg);
+  if (!prepared) {
+    const status = $('status');
+    if (status) {
+      status.textContent = 'Gere e finalize um mockup antes de baixar.';
+      status.className = 'status warn';
+    }
+    return;
+  }
+  const mime = jpeg ? 'image/jpeg' : 'image/png';
+  const extension = jpeg ? 'jpg' : 'png';
+  const scaleLabel = prepared.safeScale > 1.05 ? `${prepared.safeScale.toFixed(1).replace('.0', '')}x` : 'original';
+  prepared.canvas.toBlob((blob) => {
+    if (!blob) return;
+    downloadBlob(blob, `mockup-vision-${scaleLabel}.${extension}`);
+    const status = $('status');
+    if (status) {
+      status.textContent = `Imagem exportada em ${extension.toUpperCase()} · ${prepared.canvas.width}×${prepared.canvas.height}px.`;
+      status.className = 'status ok';
+    }
+  }, mime, jpeg ? quality : undefined);
+}
+
+function addExportControls() {
+  if ($('mockupExportPanel')) return true;
+  const save = $('saveBtn');
+  const body = save?.parentElement;
+  if (!save || !body) return false;
+  save.style.display = 'none';
+  const panel = document.createElement('div');
+  panel.id = 'mockupExportPanel';
+  panel.className = 'export-panel';
+  panel.innerHTML = `
+    <div class="fidelity-title"><span>Exportar imagem</span><span class="fidelity-badge">ALTA QUALIDADE</span></div>
+    <div class="export-grid">
+      <label>Formato
+        <select id="mockupExportFormat"><option value="png">PNG · máxima fidelidade</option><option value="jpeg">JPEG · arquivo menor</option></select>
+      </label>
+      <label>Resolução
+        <select id="mockupExportScale"><option value="1">Original</option><option value="2">2× pixels</option><option value="4">4× pixels</option></select>
+      </label>
+    </div>
+    <label class="jpeg-quality hidden" id="jpegQualityWrap">Qualidade JPEG
+      <select id="mockupJpegQuality"><option value="0.82">82%</option><option value="0.92" selected>92%</option><option value="1">100%</option></select>
+    </label>
+    <button id="mockupExportBtn" type="button" class="primary export-button">Baixar imagem</button>
+    <div class="export-note">2× e 4× aumentam as dimensões de exportação com reamostragem de alta qualidade. PNG preserva melhor detalhes finos; JPEG reduz o tamanho do arquivo.</div>`;
+  body.appendChild(panel);
+  $('mockupExportFormat')?.addEventListener('change', (event) => {
+    $('jpegQualityWrap')?.classList.toggle('hidden', event.target.value !== 'jpeg');
+  });
+  $('mockupExportBtn')?.addEventListener('click', exportMockup);
   return true;
 }
 
@@ -228,7 +426,7 @@ function improveFlowCopy() {
   const title = flow.querySelector('strong');
   const copy = flow.querySelector('p');
   if (title) title.textContent = 'Aplicação inteligente';
-  if (copy) copy.textContent = 'Com 1 arte, a IA aplica diretamente no mockup. Para múltiplas artes ou fidelidade pixel a pixel, use o modo avançado.';
+  if (copy) copy.textContent = 'Uma arte usa aplicação direta com IA. Duas ou mais artes entram no modo multi-art: a IA identifica as áreas e o renderer aplica os arquivos originais em cada superfície.';
 }
 
 function bridgeDirectCompletion() {
@@ -244,15 +442,36 @@ function bridgeDirectCompletion() {
   });
 }
 
+function bindMultiArtLifecycle() {
+  $('brandFiles')?.addEventListener('change', () => {
+    setTimeout(() => {
+      decorateAssetList();
+      updateMultiArtUX();
+    }, 40);
+  });
+  document.addEventListener('mockup:mapping-ready', (event) => {
+    const count = $('brandFiles')?.files?.length || 0;
+    if (count > 1) {
+      const status = $('autoApplyFlowStatus');
+      if (status && event.detail?.validated) {
+        status.textContent = `${count} artes mapeadas automaticamente. Revise as áreas e finalize para integrar luz e material.`;
+        status.className = 'auto-status ok';
+      }
+    }
+  });
+}
+
 function bootEnhancements() {
   addStudioStyles();
   addNewMockupControl();
   watchVersionHistory();
+  watchAssetList();
   improveFlowCopy();
-  if (!addFidelityControls()) {
-    setTimeout(bootEnhancements, 120);
-  }
+  const fidelityReady = addFidelityControls();
+  const exportReady = addExportControls();
+  if (!fidelityReady || !exportReady) setTimeout(bootEnhancements, 120);
 }
 
 bridgeDirectCompletion();
+bindMultiArtLifecycle();
 bootEnhancements();
