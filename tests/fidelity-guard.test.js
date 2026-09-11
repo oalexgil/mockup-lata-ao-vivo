@@ -8,7 +8,7 @@ const server = fs.readFileSync(new URL('../server/index.js', import.meta.url), '
 test('exact fidelity intercepts direct render and uses validated deterministic application plan', () => {
   assert.match(guard, /fidelityApplicationStrategy/);
   assert.match(guard, /deterministic-exact/);
-  assert.match(guard, /fetch\(['"]\/api\/apply-plan['"]/);
+  assert.match(guard, /nextFetch\(['"]\/api\/apply-plan['"]/);
   assert.match(guard, /surfaceValidated/);
 });
 
