@@ -25,11 +25,21 @@ test('direct mockup requests receive fidelity controls without changing core ren
   assert.match(enhancements, /safeMargins/);
 });
 
-test('one-click new mockup control starts a clean session', () => {
+test('one-click new mockup performs a soft reset without browser navigation', () => {
   assert.match(enhancements, /id="newMockupBtn"/);
   assert.match(enhancements, /Novo mockup/);
-  assert.match(enhancements, /searchParams\.set\(['"]new['"]/);
-  assert.match(enhancements, /location\.replace/);
+  assert.match(enhancements, /function softResetStudio/);
+  assert.match(enhancements, /freshSessionPending = true/);
+  assert.match(enhancements, /previousImage: null/);
+  assert.match(enhancements, /brandFiles.*dispatchEvent/s);
+  assert.doesNotMatch(enhancements, /location\.replace/);
+  assert.doesNotMatch(enhancements, /location\.reload/);
+});
+
+test('old visual versions stay hidden after a new soft-reset session', () => {
+  assert.match(enhancements, /hiddenVersionCount/);
+  assert.match(enhancements, /MutationObserver/);
+  assert.match(enhancements, /index < hiddenVersionCount/);
 });
 
 test('direct AI completion is bridged to final workflow state', () => {
