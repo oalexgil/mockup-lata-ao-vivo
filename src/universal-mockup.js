@@ -1,10 +1,71 @@
+const finiteNumber = (value) => Number.isFinite(Number(value));
 const clamp = (value, min, max) => Math.max(min, Math.min(max, Number(value)));
 
 function point(value = {}) {
+  if (!value || typeof value !== 'object' || !finiteNumber(value.x) || !finiteNumber(value.y)) return null;
   return {
     x: clamp(value.x, 0, 1),
     y: clamp(value.y, 0, 1),
   };
+}
+
+function distance(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+export function quadArea(quad = []) {
+  if (!Array.isArray(quad) || quad.length !== 4) return 0;
+  let area = 0;
+  for (let index = 0; index < quad.length; index += 1) {
+    const current = quad[index];
+    const next = quad[(index + 1) % quad.length];
+    if (!current || !next || !finiteNumber(current.x) || !finiteNumber(current.y) || !finiteNumber(next.x) || !finiteNumber(next.y)) return 0;
+    area += Number(current.x) * Number(next.y) - Number(next.x) * Number(current.y);
+  }
+  return Math.abs(area) / 2;
+}
+
+function orientation(a, b, c) {
+  const value = (b.y - a.y) * (c.x - b.x) - (b.x - a.x) * (c.y - b.y);
+  if (Math.abs(value) < 1e-9) return 0;
+  return value > 0 ? 1 : 2;
+}
+
+function segmentsIntersect(a, b, c, d) {
+  const o1 = orientation(a, b, c);
+  const o2 = orientation(a, b, d);
+  const o3 = orientation(c, d, a);
+  const o4 = orientation(c, d, b);
+  return o1 !== o2 && o3 !== o4;
+}
+
+export function isValidNormalizedQuad(quad = [], options = {}) {
+  const minArea = Number(options.minArea ?? 0.0025);
+  const minSpan = Number(options.minSpan ?? 0.04);
+  const minEdge = Number(options.minEdge ?? 0.02);
+  if (!Array.isArray(quad) || quad.length !== 4) return false;
+  if (!quad.every((p) => p && finiteNumber(p.x) && finiteNumber(p.y)
+    && Number(p.x) >= 0 && Number(p.x) <= 1 && Number(p.y) >= 0 && Number(p.y) <= 1)) return false;
+
+  const xs = quad.map((p) => Number(p.x));
+  const ys = quad.map((p) => Number(p.y));
+  if (Math.max(...xs) - Math.min(...xs) < minSpan) return false;
+  if (Math.max(...ys) - Math.min(...ys) < minSpan) return false;
+  if (quadArea(quad) < minArea) return false;
+  if (quad.some((p, index) => distance(p, quad[(index + 1) % 4]) < minEdge)) return false;
+  if (segmentsIntersect(quad[0], quad[1], quad[2], quad[3])) return false;
+  if (segmentsIntersect(quad[1], quad[2], quad[3], quad[0])) return false;
+  return true;
+}
+
+const NON_PRINTABLE_LABEL = /\b(interior|inside|opening|rim|handle|hole|cavity|background|shadow|negative\s+space|abertura|al[cç]a|asa|buraco|cavidade|fundo|sombra)\b/i;
+
+export function isUsableMockupSlot(slot = {}) {
+  if (!slot || typeof slot !== 'object') return false;
+  if (!isValidNormalizedQuad(slot.quad)) return false;
+  if (NON_PRINTABLE_LABEL.test(String(slot.label || ''))) return false;
+  const confidence = Number(slot.confidence);
+  return !Number.isFinite(confidence) || confidence >= 0.2;
 }
 
 export const ARTWORK_FIDELITY_POLICY = Object.freeze({
@@ -31,7 +92,7 @@ export function normalizeUniversalSlots(input, maxSlots = 8) {
     const quad = Array.isArray(slot?.quad) && slot.quad.length === 4
       ? slot.quad.map(point)
       : null;
-    if (!quad) return null;
+    if (!quad || quad.some((p) => !p) || !isValidNormalizedQuad(quad)) return null;
     return {
       id: String(slot.id || index + 1),
       index: index + 1,
