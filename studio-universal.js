@@ -37,7 +37,15 @@ function setFlowStatus(message, kind = '') {
 
 function setFinalizeAvailability() {
   const button = $('finalizeAiBtn');
-  if (button) button.disabled = !U.surfaceValidated || !U.mapping.length;
+  if (!button) return;
+  const disabled = !U.surfaceValidated || !U.mapping.length;
+  button.disabled = disabled;
+  button.setAttribute('aria-disabled', String(disabled));
+  button.style.opacity = disabled ? '0.42' : '';
+  button.style.cursor = disabled ? 'not-allowed' : '';
+  button.title = disabled
+    ? 'Disponível somente após a IA validar uma superfície real.'
+    : 'Finalizar integração visual sem redesenhar a arte.';
 }
 
 function syncOverlayGeometry() {
@@ -197,13 +205,15 @@ function warpArtwork(targetCtx, quad, artwork, plan = {}) {
 
 function drawGuides() {
   const ctx = overlayCtx;
+  const provisional = !U.surfaceValidated;
   ctx.save();
   ctx.lineWidth = Math.max(2, overlay.width / 650);
   ctx.font = `${Math.max(14, overlay.width / 55)}px Space Mono, monospace`;
   U.mapping.forEach((slot) => {
     const quad = quadToPixels(slot.quad, overlay.width, overlay.height);
-    ctx.strokeStyle = '#00d8ff';
-    ctx.fillStyle = 'rgba(0,216,255,.13)';
+    ctx.strokeStyle = provisional ? '#f2b84b' : '#00d8ff';
+    ctx.fillStyle = provisional ? 'rgba(242,184,75,.09)' : 'rgba(0,216,255,.13)';
+    ctx.setLineDash(provisional ? [12, 8] : []);
     ctx.beginPath();
     ctx.moveTo(quad[0].x, quad[0].y);
     quad.slice(1).forEach((p) => ctx.lineTo(p.x, p.y));
@@ -212,14 +222,15 @@ function drawGuides() {
     ctx.stroke();
     const p = quad[0];
     const r = Math.max(13, overlay.width / 65);
-    ctx.fillStyle = '#00d8ff';
+    ctx.setLineDash([]);
+    ctx.fillStyle = provisional ? '#f2b84b' : '#00d8ff';
     ctx.beginPath();
     ctx.arc(p.x + r, p.y + r, r, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#061619';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(String(slot.index), p.x + r, p.y + r);
+    ctx.fillText(provisional ? '?' : String(slot.index), p.x + r, p.y + r);
   });
   ctx.restore();
 }
@@ -227,12 +238,16 @@ function drawGuides() {
 function renderOverlay({ guides = false } = {}) {
   syncOverlayGeometry();
   overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
-  U.mapping.forEach((slot) => {
-    if (slot.artworkIndex == null) return;
-    const artwork = U.artworks[slot.artworkIndex];
-    const plan = U.plan?.slots?.find((item) => Number(item.index) === Number(slot.index)) || {};
-    warpArtwork(overlayCtx, quadToPixels(slot.quad, overlay.width, overlay.height), artwork, plan);
-  });
+
+  if (U.surfaceValidated) {
+    U.mapping.forEach((slot) => {
+      if (slot.artworkIndex == null) return;
+      const artwork = U.artworks[slot.artworkIndex];
+      const plan = U.plan?.slots?.find((item) => Number(item.index) === Number(slot.index)) || {};
+      warpArtwork(overlayCtx, quadToPixels(slot.quad, overlay.width, overlay.height), artwork, plan);
+    });
+  }
+
   if (guides) drawGuides();
 }
 
@@ -260,9 +275,12 @@ function mappingList() {
   U.mapping.forEach((slot) => {
     const row = document.createElement('div');
     row.className = 'tiny';
-    const art = slot.artworkIndex == null ? 'sem arte' : `Arte ${slot.artworkIndex + 1}`;
-    const state = U.surfaceValidated ? '' : ' · provisória';
-    row.textContent = `Área ${slot.index} · ${slot.label} ← ${art}${state}`;
+    if (!U.surfaceValidated) {
+      row.textContent = `Área ${slot.index} · ${slot.label} · sem aplicação até validação`;
+    } else {
+      const art = slot.artworkIndex == null ? 'sem arte' : `Arte ${slot.artworkIndex + 1}`;
+      row.textContent = `Área ${slot.index} · ${slot.label} ← ${art}`;
+    }
     box.appendChild(row);
   });
 }
@@ -378,6 +396,7 @@ function ensureUniversalControls() {
     mapButton?.insertAdjacentElement('afterend', button);
     button.addEventListener('click', finalizeWithAI);
   }
+  setFinalizeAvailability();
   mapButton?.addEventListener('click', analyzeLayout);
   return true;
 }
@@ -421,6 +440,12 @@ function boot() {
 
   $('saveBtn')?.addEventListener('click', (event) => {
     if (!U.mapping.length) return;
+    if (!U.surfaceValidated) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      setFlowStatus('Não é possível exportar uma aplicação provisória. Valide a superfície ou refaça a identificação.', 'warn');
+      return;
+    }
     event.preventDefault();
     event.stopImmediatePropagation();
     const out = mergedCanvas({ guides: false });
