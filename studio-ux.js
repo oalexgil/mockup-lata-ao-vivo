@@ -37,7 +37,7 @@ function providerLabel(provider) {
 }
 
 function sceneIsReady() {
-  return $('progress2')?.classList.contains('done') || $('empty')?.classList.contains('hidden') || false;
+  return Boolean($('empty')?.classList.contains('hidden'));
 }
 
 function artworkCount() {
@@ -52,7 +52,7 @@ function slotCount() {
 
 function setGuidesVisible(visible) {
   const button = $('toggleGuides');
-  if (!button) return;
+  if (!button || !sceneIsReady()) return;
   const guidesVisible = /ocultar/i.test(button.textContent || '');
   if (visible !== guidesVisible) button.click();
 }
@@ -92,12 +92,18 @@ function ensureFlowControls() {
     box.className = 'flow-box';
     box.innerHTML = `
       <strong>Aplicação automática</strong>
-      <p>Envie uma ou várias artes. A IA local detecta as áreas e o motor aplica os arquivos originais preservando perspectiva, luz e qualidade.</p>
+      <p>Envie uma ou várias artes. O detector encontra as áreas e o motor aplica os arquivos originais preservando perspectiva, luz e qualidade.</p>
       <button id="autoApplyFlowBtn" class="primary">Aplicar artes automaticamente</button>
       <div id="autoApplyFlowStatus" class="auto-status">Aguardando artes.</div>
       <button id="fineTuneFlowBtn" class="secondary hidden">Ajustes finos opcionais</button>
       <div class="fine-tune-note">A edição manual é opcional. Use apenas se quiser corrigir uma área, trocar a arte de um espaço ou refinar os quatro cantos.</div>`;
     artsCard?.querySelector('.card-body')?.appendChild(box);
+  }
+}
+
+function setProgressActive(step) {
+  for (let i = 1; i <= 4; i += 1) {
+    $('progress' + i)?.classList.toggle('active', i === step);
   }
 }
 
@@ -110,8 +116,10 @@ function renderFlow() {
   approvalBox?.classList.toggle('scene-approved', flow.sceneApproved);
   $('approveSceneBtn')?.classList.toggle('hidden', flow.sceneApproved);
   $('reopenSceneBtn')?.classList.toggle('hidden', !flow.sceneApproved);
-  if ($('sceneApprovalText')) {
-    $('sceneApprovalText').textContent = flow.sceneApproved
+
+  const approvalText = $('sceneApprovalText');
+  if (approvalText) {
+    approvalText.textContent = flow.sceneApproved
       ? 'Cena aprovada. Agora envie as artes; o Mockup Vision fará a primeira aplicação automaticamente.'
       : 'Itere até chegar ao mockup vazio ideal. Quando aprovar, a cena fica travada e você envia as artes.';
   }
@@ -130,11 +138,8 @@ function renderFlow() {
     fineTune.textContent = flow.fineTuneOpen ? 'Fechar ajustes finos' : 'Ajustes finos opcionais';
   }
 
-  for (let i = 1; i <= 4; i += 1) $('progress' + i)?.classList.remove('active');
-  if (!ready) $('progress1')?.classList.add('active');
-  else if (!flow.sceneApproved) $('progress2')?.classList.add('active');
-  else if (!flow.artworkCount) $('progress3')?.classList.add('active');
-  else $('progress4')?.classList.add('active');
+  const step = !ready ? 1 : !flow.sceneApproved ? 2 : !flow.artworkCount ? 3 : 4;
+  setProgressActive(step);
 }
 
 async function checkGenerator() {
@@ -181,10 +186,12 @@ async function autoApply() {
   const count = artworkCount();
   flow = setArtworkCount(flow, count);
   if (!flow.sceneApproved) return;
+
+  const status = $('autoApplyFlowStatus');
   if (!count) {
-    if ($('autoApplyFlowStatus')) {
-      $('autoApplyFlowStatus').textContent = 'Envie pelo menos uma arte.';
-      $('autoApplyFlowStatus').className = 'auto-status warn';
+    if (status) {
+      status.textContent = 'Envie pelo menos uma arte.';
+      status.className = 'auto-status warn';
     }
     renderFlow();
     return;
@@ -193,9 +200,9 @@ async function autoApply() {
   autoApplying = true;
   const button = $('autoApplyFlowBtn');
   if (button) button.disabled = true;
-  if ($('autoApplyFlowStatus')) {
-    $('autoApplyFlowStatus').textContent = 'Detectando áreas e aplicando as artes…';
-    $('autoApplyFlowStatus').className = 'auto-status';
+  if (status) {
+    status.textContent = 'Detectando áreas e aplicando as artes…';
+    status.className = 'auto-status';
   }
 
   try {
@@ -206,15 +213,15 @@ async function autoApply() {
     flow = markAutoApplied(setArtworkCount(flow, count));
     setGuidesVisible(false);
     const message = autoApplyMessage(count, slotCount());
-    if ($('autoApplyFlowStatus')) {
-      $('autoApplyFlowStatus').textContent = `Pronto. ${message} Revise o resultado no canvas; ajustes manuais são opcionais.`;
-      $('autoApplyFlowStatus').className = 'auto-status ok';
+    if (status) {
+      status.textContent = `Pronto. ${message} Revise o resultado no canvas; ajustes manuais são opcionais.`;
+      status.className = 'auto-status ok';
     }
   } catch (error) {
     console.warn(error);
-    if ($('autoApplyFlowStatus')) {
-      $('autoApplyFlowStatus').textContent = 'A aplicação automática encontrou um problema. A arte foi mantida no fallback atual e você pode abrir os ajustes finos.';
-      $('autoApplyFlowStatus').className = 'auto-status warn';
+    if (status) {
+      status.textContent = 'A aplicação automática encontrou um problema. Você pode abrir os ajustes finos e continuar manualmente.';
+      status.className = 'auto-status warn';
     }
     flow = markAutoApplied(setArtworkCount(flow, count));
   } finally {
@@ -265,17 +272,12 @@ for (const id of ['generateBtn', 'iterateBtn']) {
   });
 }
 
-const progress2 = $('progress2');
-if (progress2) {
+const empty = $('empty');
+if (empty) {
   new MutationObserver(() => {
     if (!sceneIsReady()) flow = reopenScene({ ...flow, sceneReady: false });
     renderFlow();
-  }).observe(progress2, { attributes: true, attributeFilter: ['class'] });
-}
-
-const empty = $('empty');
-if (empty) {
-  new MutationObserver(renderFlow).observe(empty, { attributes: true, attributeFilter: ['class'] });
+  }).observe(empty, { attributes: true, attributeFilter: ['class'] });
 }
 
 const assetCountEl = $('assetCount');
