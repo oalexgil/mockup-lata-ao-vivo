@@ -17,6 +17,7 @@ const U = {
   finalized: false,
   surfaceValidated: false,
   mappingStatus: 'idle',
+  workflowMode: 'single',
 };
 
 const overlay = document.createElement('canvas');
@@ -35,17 +36,37 @@ function setFlowStatus(message, kind = '') {
   el.className = `auto-status ${kind}`.trim();
 }
 
+function uploadedFileCount() {
+  return $('brandFiles')?.files?.length || 0;
+}
+
+function updateModeControls() {
+  const count = uploadedFileCount();
+  const primary = $('autoApplyFlowBtn');
+  const advanced = $('advancedMappingBtn');
+  const finalize = $('finalizeAiBtn');
+  const instruction = $('mockupApplyInstruction');
+  const single = count <= 1;
+
+  if (primary) primary.textContent = single ? 'Aplicar mockup com IA' : 'Mapear várias artes com IA';
+  if (instruction) instruction.style.display = single ? 'block' : 'none';
+  if (advanced) advanced.style.display = single ? 'block' : 'none';
+  if (finalize) finalize.style.display = U.workflowMode === 'advanced' || !single ? '' : 'none';
+}
+
 function setFinalizeAvailability() {
   const button = $('finalizeAiBtn');
   if (!button) return;
-  const disabled = !U.surfaceValidated || !U.mapping.length;
+  const advancedMode = U.workflowMode === 'advanced' || uploadedFileCount() > 1;
+  const disabled = !advancedMode || !U.surfaceValidated || !U.mapping.length;
   button.disabled = disabled;
   button.setAttribute('aria-disabled', String(disabled));
   button.style.opacity = disabled ? '0.42' : '';
   button.style.cursor = disabled ? 'not-allowed' : '';
   button.title = disabled
-    ? 'Disponível somente após a IA validar uma superfície real.'
+    ? 'Disponível no modo avançado após a IA validar uma superfície real.'
     : 'Finalizar integração visual sem redesenhar a arte.';
+  updateModeControls();
 }
 
 function syncOverlayGeometry() {
@@ -277,6 +298,8 @@ function mappingList() {
     row.className = 'tiny';
     if (!U.surfaceValidated) {
       row.textContent = `Área ${slot.index} · ${slot.label} · sem aplicação até validação`;
+    } else if (U.workflowMode === 'single') {
+      row.textContent = `Aplicação automática · ${slot.label} ← Arte 1`;
     } else {
       const art = slot.artworkIndex == null ? 'sem arte' : `Arte ${slot.artworkIndex + 1}`;
       row.textContent = `Área ${slot.index} · ${slot.label} ← ${art}`;
@@ -285,23 +308,113 @@ function mappingList() {
   });
 }
 
+function resetApplicationState(mode = uploadedFileCount() > 1 ? 'advanced' : 'single') {
+  U.slots = [];
+  U.mapping = [];
+  U.plan = null;
+  U.finalized = false;
+  U.surfaceValidated = false;
+  U.mappingStatus = 'idle';
+  U.workflowMode = mode;
+  overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+  mappingList();
+  setFinalizeAvailability();
+}
+
+async function prepareApplication() {
+  await loadArtworks();
+  hideExistingGuides();
+  clearLegacyArtworkAssignments();
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  U.baseDataUrl = baseCanvas.toDataURL('image/jpeg', 0.94);
+}
+
+async function applySingleWithAI() {
+  if (!baseCanvas?.width || !baseCanvas?.height) return setFlowStatus('Aprove uma cena antes de aplicar a arte.', 'warn');
+  const files = [...($('brandFiles')?.files || [])];
+  if (files.length !== 1) return analyzeLayout();
+
+  const primary = $('autoApplyFlowBtn');
+  const advanced = $('advancedMappingBtn');
+  if (primary) primary.disabled = true;
+  if (advanced) advanced.disabled = true;
+  U.workflowMode = 'single';
+  U.surfaceValidated = false;
+  U.mappingStatus = 'single-analyzing';
+  U.finalized = false;
+  setFinalizeAvailability();
+  setFlowStatus('A IA está planejando a aplicação da arte sem redesenhar a marca…');
+
+  try {
+    await prepareApplication();
+    const artwork = U.artworks[0];
+    const artworkAspectRatio = artwork?.image?.naturalHeight
+      ? artwork.image.naturalWidth / artwork.image.naturalHeight
+      : 1;
+    const instruction = String($('mockupApplyInstruction')?.value || '').trim();
+    const response = await fetch('/api/apply-plan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        imageDataUrl: U.baseDataUrl,
+        artworkAspectRatio,
+        instruction,
+      }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result?.error || `apply ${response.status}`);
+
+    U.slots = result.target ? [result.target] : (result.slots || []);
+    U.mapping = mapArtworksToSlots(1, U.slots);
+    U.mappingStatus = result.applicationStatus || result.mappingStatus || 'fallback';
+    U.surfaceValidated = result.surfaceValidated === true && U.mappingStatus === 'validated' && U.slots.length === 1;
+
+    if (U.surfaceValidated) {
+      U.plan = {
+        slots: [{ ...(result.integration || {}), index: 1 }],
+        summary: String(result.summary || ''),
+        artworkFidelityLocked: true,
+      };
+      U.finalized = true;
+      renderOverlay({ guides: false });
+      mappingList();
+      setFlowStatus('Mockup aplicado com IA. A arte original foi preservada; apenas geometria, luz e integração visual foram ajustadas.', 'ok');
+      document.dispatchEvent(new CustomEvent('mockup:ai-applied', { detail: { plan: result } }));
+    } else {
+      U.plan = null;
+      U.finalized = false;
+      renderOverlay({ guides: true });
+      mappingList();
+      setFlowStatus(result.warning || 'A IA não conseguiu aplicar automaticamente. Use Revisar áreas ou tente novamente.', 'warn');
+    }
+  } catch (error) {
+    console.warn(error);
+    resetApplicationState('single');
+    setFlowStatus(`Não foi possível aplicar o mockup com IA: ${error.message}`, 'warn');
+  } finally {
+    if (primary) primary.disabled = false;
+    if (advanced) advanced.disabled = false;
+    setFinalizeAvailability();
+  }
+}
+
 async function analyzeLayout() {
   if (!baseCanvas?.width || !baseCanvas?.height) return setFlowStatus('Aprove uma cena antes de identificar áreas.', 'warn');
   const files = [...($('brandFiles')?.files || [])];
   if (!files.length) return setFlowStatus('Envie pelo menos uma arte.', 'warn');
 
   const button = $('autoApplyFlowBtn');
+  const advanced = $('advancedMappingBtn');
   if (button) button.disabled = true;
+  if (advanced) advanced.disabled = true;
+  U.workflowMode = 'advanced';
   U.surfaceValidated = false;
   U.mappingStatus = 'analyzing';
+  U.finalized = false;
   setFinalizeAvailability();
-  setFlowStatus('A IA está identificando as superfícies de aplicação…');
+  setFlowStatus('A IA está identificando superfícies para revisão avançada…');
   try {
-    await loadArtworks();
-    hideExistingGuides();
-    clearLegacyArtworkAssignments();
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    U.baseDataUrl = baseCanvas.toDataURL('image/jpeg', 0.94);
+    await prepareApplication();
     const desiredSlots = Number($('desiredSlots')?.value) || files.length;
     const response = await fetch('/api/analyze-layout', {
       method: 'POST',
@@ -334,18 +447,12 @@ async function analyzeLayout() {
     }));
   } catch (error) {
     console.warn(error);
-    U.slots = [];
-    U.mapping = [];
-    U.plan = null;
-    U.finalized = false;
-    U.surfaceValidated = false;
-    U.mappingStatus = 'error';
-    overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
-    mappingList();
-    setFinalizeAvailability();
+    resetApplicationState('advanced');
     setFlowStatus(`Falha ao identificar áreas com IA: ${error.message}`, 'warn');
   } finally {
     if (button) button.disabled = false;
+    if (advanced) advanced.disabled = false;
+    setFinalizeAvailability();
   }
 }
 
@@ -382,11 +489,33 @@ async function finalizeWithAI() {
   }
 }
 
+function primaryApply() {
+  return uploadedFileCount() === 1 ? applySingleWithAI() : analyzeLayout();
+}
+
 function ensureUniversalControls() {
   const flow = $('autoApplyFlow');
   if (!flow) return false;
   const mapButton = $('autoApplyFlowBtn');
-  if (mapButton) mapButton.textContent = 'Identificar áreas e mapear artes';
+
+  if (!$('mockupApplyInstruction')) {
+    const field = document.createElement('textarea');
+    field.id = 'mockupApplyInstruction';
+    field.rows = 3;
+    field.maxLength = 1200;
+    field.placeholder = 'Instrução opcional. Ex.: aplicar na face frontal principal e centralizar. Se deixar vazio, o Mockup Vision decide automaticamente.';
+    field.setAttribute('aria-label', 'Instrução opcional para aplicação da arte');
+    field.style.width = '100%';
+    field.style.boxSizing = 'border-box';
+    field.style.margin = '8px 0';
+    mapButton?.insertAdjacentElement('beforebegin', field);
+  }
+
+  if (mapButton && !mapButton.dataset.universalBound) {
+    mapButton.dataset.universalBound = 'true';
+    mapButton.addEventListener('click', primaryApply);
+  }
+
   if (!$('finalizeAiBtn')) {
     const button = document.createElement('button');
     button.id = 'finalizeAiBtn';
@@ -396,8 +525,20 @@ function ensureUniversalControls() {
     mapButton?.insertAdjacentElement('afterend', button);
     button.addEventListener('click', finalizeWithAI);
   }
+
+  if (!$('advancedMappingBtn')) {
+    const advanced = document.createElement('button');
+    advanced.id = 'advancedMappingBtn';
+    advanced.type = 'button';
+    advanced.textContent = 'Revisar áreas / modo avançado';
+    advanced.style.width = '100%';
+    advanced.style.marginTop = '8px';
+    $('finalizeAiBtn')?.insertAdjacentElement('afterend', advanced);
+    advanced.addEventListener('click', analyzeLayout);
+  }
+
+  updateModeControls();
   setFinalizeAvailability();
-  mapButton?.addEventListener('click', analyzeLayout);
   return true;
 }
 
@@ -417,25 +558,25 @@ function waitForLegacyAssetLoad(expected, timeoutMs = 6000) {
 function boot() {
   if (!ensureUniversalControls()) return setTimeout(boot, 120);
   $('brandFiles')?.addEventListener('change', async () => {
-    U.slots = [];
-    U.mapping = [];
-    U.plan = null;
-    U.finalized = false;
-    U.surfaceValidated = false;
-    U.mappingStatus = 'idle';
-    overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
-    setFinalizeAvailability();
-    const expected = $('brandFiles')?.files?.length || 0;
+    const expected = uploadedFileCount();
+    resetApplicationState(expected > 1 ? 'advanced' : 'single');
+    updateModeControls();
     if (expected) {
-      setFlowStatus('Artes carregadas. Preparando identificação automática das áreas…');
+      setFlowStatus(expected === 1
+        ? 'Arte carregada. Preparando aplicação automática com IA…'
+        : 'Artes carregadas. Preparando mapeamento automático das áreas…');
       await waitForLegacyAssetLoad(expected);
-      analyzeLayout();
+      if (expected === 1) applySingleWithAI();
+      else analyzeLayout();
     }
   });
   document.addEventListener('mockup:mapping-ready', setFinalizeAvailability);
   window.addEventListener('resize', () => {
     syncOverlayGeometry();
-    if (U.mapping.length) renderOverlay({ guides: !U.finalized });
+    if (U.mapping.length) {
+      const guides = !U.surfaceValidated || (U.workflowMode === 'advanced' && !U.finalized);
+      renderOverlay({ guides });
+    }
   });
 
   $('saveBtn')?.addEventListener('click', (event) => {
@@ -443,7 +584,7 @@ function boot() {
     if (!U.surfaceValidated) {
       event.preventDefault();
       event.stopImmediatePropagation();
-      setFlowStatus('Não é possível exportar uma aplicação provisória. Valide a superfície ou refaça a identificação.', 'warn');
+      setFlowStatus('Não é possível exportar uma aplicação provisória. Aplique novamente ou use o modo avançado.', 'warn');
       return;
     }
     event.preventDefault();
