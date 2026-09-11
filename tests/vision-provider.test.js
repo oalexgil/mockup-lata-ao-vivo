@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 import {
   createUniversalFallbackSlots,
   extractStructuredVisionResult,
+  hasRequestedVisionCoverage,
   layoutVisionResponseFormat,
   parseJsonText,
   refinementVisionResponseFormat,
   sanitizeJsonText,
   singleApplicationRootPrompt,
   singleApplicationVisionResponseFormat,
+  sortVisionSlots,
   usableVisionSlots,
 } from '../server/vision-provider.js';
 
@@ -92,6 +94,13 @@ test('layout JSON mode contract requires bounded normalized coordinates', () => 
   assert.equal(item.properties.confidence.maximum, 1);
 });
 
+test('multi-art layout schema caps the response at the requested surface count', () => {
+  const format = layoutVisionResponseFormat(4);
+  const slots = format.json_schema.properties.slots;
+  assert.equal(slots.minItems, 1);
+  assert.equal(slots.maxItems, 4);
+});
+
 test('vision surface gate rejects object interiors and degenerate quads', () => {
   const goodQuad = [
     { x: 0.3, y: 0.25 },
@@ -122,6 +131,48 @@ test('vision surface gate rejects object interiors and degenerate quads', () => 
     quad: goodQuad,
   }] }, 1);
   assert.equal(valid.length, 1);
+});
+
+test('multi-art coverage rejects the partial one-of-four mapping seen in Studio', () => {
+  const oneSurface = {
+    slots: [{
+      id: 'center',
+      label: 'center card',
+      confidence: 0.96,
+      quad: [
+        { x: 0.4, y: 0.4 },
+        { x: 0.6, y: 0.4 },
+        { x: 0.6, y: 0.62 },
+        { x: 0.4, y: 0.62 },
+      ],
+    }],
+  };
+  assert.equal(hasRequestedVisionCoverage(oneSurface, 4), false);
+});
+
+test('multi-art coverage accepts four valid surfaces and sorts them in visual reading order', () => {
+  const makeSlot = (id, x, y) => ({
+    id,
+    label: `panel ${id}`,
+    confidence: 0.9,
+    quad: [
+      { x, y },
+      { x: x + 0.18, y },
+      { x: x + 0.18, y: y + 0.18 },
+      { x, y: y + 0.18 },
+    ],
+  });
+  const input = {
+    slots: [
+      makeSlot('bottom-right', 0.62, 0.62),
+      makeSlot('top-right', 0.62, 0.18),
+      makeSlot('bottom-left', 0.18, 0.62),
+      makeSlot('top-left', 0.18, 0.18),
+    ],
+  };
+  assert.equal(hasRequestedVisionCoverage(input, 4), true);
+  const sorted = sortVisionSlots(usableVisionSlots(input, 4));
+  assert.deepEqual(sorted.map((slot) => slot.id), ['top-left', 'top-right', 'bottom-left', 'bottom-right']);
 });
 
 test('one-step application JSON contract combines target geometry and safe integration', () => {
