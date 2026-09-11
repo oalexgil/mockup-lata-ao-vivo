@@ -6,6 +6,7 @@ import {
   isValidNormalizedQuad,
   mapArtworksToSlots,
   normalizeRefinementPlan,
+  normalizeSingleApplicationPlan,
   normalizeUniversalSlots,
   quadArea,
   quadToPixels,
@@ -100,6 +101,58 @@ test('refinement plan is conservative and cannot request content rewrites', () =
   assert.equal(plan.slots[0].saturation, 1.12);
   assert.equal(plan.slots[0].opacity, 0.86);
   assert.equal(plan.slots[0].blend, 'source-over');
+});
+
+test('single application plan preserves target geometry and clamps integration only', () => {
+  const plan = normalizeSingleApplicationPlan({
+    summary: 'place on front face',
+    target: {
+      id: 'front',
+      label: 'front printable surface',
+      confidence: 0.95,
+      quad: [
+        { x: 0.3, y: 0.25 },
+        { x: 0.7, y: 0.25 },
+        { x: 0.68, y: 0.75 },
+        { x: 0.32, y: 0.75 },
+      ],
+    },
+    integration: {
+      preserveLight: 3,
+      brightness: 9,
+      contrast: -4,
+      saturation: 2,
+      opacity: 0.2,
+      blend: 'difference',
+      note: 'keep material light',
+    },
+  });
+  assert.equal(plan.artworkFidelityLocked, true);
+  assert.equal(plan.target.id, 'front');
+  assert.equal(plan.integration.index, 1);
+  assert.equal(plan.integration.preserveLight, 1);
+  assert.equal(plan.integration.brightness, 1.18);
+  assert.equal(plan.integration.contrast, 0.82);
+  assert.equal(plan.integration.saturation, 1.12);
+  assert.equal(plan.integration.opacity, 0.86);
+  assert.equal(plan.integration.blend, 'source-over');
+});
+
+test('single application plan rejects a non-printable target', () => {
+  const plan = normalizeSingleApplicationPlan({
+    target: {
+      label: 'cup interior',
+      confidence: 0.9,
+      quad: [
+        { x: 0.3, y: 0.25 },
+        { x: 0.7, y: 0.25 },
+        { x: 0.68, y: 0.75 },
+        { x: 0.32, y: 0.75 },
+      ],
+    },
+    integration: {},
+  });
+  assert.equal(plan.target, null);
 });
 
 test('normalized quad converts to canvas pixels', () => {
