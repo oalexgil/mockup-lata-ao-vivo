@@ -4,6 +4,74 @@ const VISION_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
 const STRICT_JSON_REMINDER = 'Return only valid JSON. Do not include markdown. Do not include explanations. Do not include code fences.';
 let agreementPromise = null;
 
+const POINT_SCHEMA = {
+  type: 'object',
+  properties: {
+    x: { type: 'number' },
+    y: { type: 'number' },
+  },
+  required: ['x', 'y'],
+};
+
+const LAYOUT_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    slots: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          label: { type: 'string' },
+          confidence: { type: 'number' },
+          quad: {
+            type: 'array',
+            minItems: 4,
+            maxItems: 4,
+            items: POINT_SCHEMA,
+          },
+        },
+        required: ['id', 'label', 'confidence', 'quad'],
+      },
+    },
+  },
+  required: ['slots'],
+};
+
+const REFINEMENT_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    summary: { type: 'string' },
+    slots: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          index: { type: 'number' },
+          preserveLight: { type: 'number' },
+          brightness: { type: 'number' },
+          contrast: { type: 'number' },
+          saturation: { type: 'number' },
+          opacity: { type: 'number' },
+          blend: { type: 'string' },
+          note: { type: 'string' },
+        },
+        required: [
+          'index',
+          'preserveLight',
+          'brightness',
+          'contrast',
+          'saturation',
+          'opacity',
+          'blend',
+          'note',
+        ],
+      },
+    },
+  },
+  required: ['summary', 'slots'],
+};
+
 function clean(value, max = 16000) {
   return String(value || '').trim().slice(0, max);
 }
@@ -42,6 +110,7 @@ async function postModel(payload, env = process.env, model = VISION_MODEL) {
       || `Cloudflare Vision ${response.status}`;
     const error = new Error(message);
     error.statusCode = response.status >= 500 ? 502 : response.status;
+    error.responseBody = clean(text, 4000);
     throw error;
   }
   return json;
@@ -66,6 +135,15 @@ function extractText(payload) {
   ];
   const value = candidates.find((item) => typeof item === 'string');
   return clean(value, 24000);
+}
+
+export function extractStructuredVisionResult(payload) {
+  const candidates = [
+    payload?.result?.response,
+    payload?.response,
+    payload?.result?.json,
+  ];
+  return candidates.find((item) => item && typeof item === 'object' && !Array.isArray(item)) || null;
 }
 
 function firstBalancedObject(text) {
@@ -133,24 +211,35 @@ export function parseJsonText(text) {
 function logVisionAttempt(label, attempt, raw, sanitized, error = null) {
   console.info(`[vision:${label}] resposta bruta tentativa ${attempt}:`, raw || '(vazia)');
   console.info(`[vision:${label}] resposta sanitizada tentativa ${attempt}:`, sanitized || '(vazia)');
-  if (error) console.warn(`[vision:${label}] erro de parse tentativa ${attempt}:`, error);
+  if (error) console.warn(`[vision:${label}] erro tentativa ${attempt}:`, error);
 }
 
-async function requestStructuredVision({ image, prompt, system, env, label, validate }) {
+export function jsonResponseFormat(schema) {
+  return {
+    type: 'json_schema',
+    json_schema: schema,
+  };
+}
+
+async function requestStructuredVision({ image, prompt, system, env, label, validate, schema }) {
   let lastError = null;
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const retryReminder = attempt === 2 ? `\n\n${STRICT_JSON_REMINDER}` : '';
-    const payload = await postModel({
-      messages: [
-        { role: 'system', content: `${system} ${STRICT_JSON_REMINDER}` },
-        { role: 'user', content: `${prompt}${retryReminder}` },
-      ],
-      image,
-    }, env);
-    const raw = extractText(payload);
-    const sanitized = sanitizeJsonText(raw);
     try {
-      const parsed = parseJsonText(raw);
+      const payload = await postModel({
+        messages: [
+          { role: 'system', content: `${system} ${STRICT_JSON_REMINDER}` },
+          { role: 'user', content: `${prompt}${retryReminder}` },
+        ],
+        image,
+        response_format: jsonResponseFormat(schema),
+      }, env);
+
+      const structured = extractStructuredVisionResult(payload);
+      const raw = structured ? JSON.stringify(structured) : extractText(payload);
+      const sanitized = structured ? raw : sanitizeJsonText(raw);
+      const parsed = structured || parseJsonText(raw);
+
       if (validate && !validate(parsed)) {
         throw new Error('A resposta JSON não respeitou o schema esperado.');
       }
@@ -158,7 +247,9 @@ async function requestStructuredVision({ image, prompt, system, env, label, vali
       return parsed;
     } catch (error) {
       lastError = error;
-      logVisionAttempt(label, attempt, raw, sanitized, error);
+      const responseBody = clean(error?.responseBody, 4000);
+      const sanitized = responseBody ? sanitizeJsonText(responseBody) : '';
+      logVisionAttempt(label, attempt, responseBody, sanitized, error);
     }
   }
   throw lastError || new Error('A análise visual não retornou JSON válido.');
@@ -190,6 +281,14 @@ export function createUniversalFallbackSlots() {
   }, 1);
 }
 
+export function layoutVisionResponseFormat() {
+  return jsonResponseFormat(LAYOUT_JSON_SCHEMA);
+}
+
+export function refinementVisionResponseFormat() {
+  return jsonResponseFormat(REFINEMENT_JSON_SCHEMA);
+}
+
 export async function analyzeUniversalLayout(body = {}, env = process.env) {
   await ensureAgreement(env);
   const image = imageValue(body.imageDataUrl);
@@ -203,6 +302,7 @@ export async function analyzeUniversalLayout(body = {}, env = process.env) {
       system: 'You are a precise visual geometry assistant for professional mockups.',
       env,
       label: 'layout',
+      schema: LAYOUT_JSON_SCHEMA,
       validate: (value) => normalizeUniversalSlots(value, requested).length > 0,
     });
     const slots = normalizeUniversalSlots(parsed, requested);
@@ -240,6 +340,7 @@ export async function analyzeRefinement(body = {}, env = process.env) {
       system: 'You are a mockup finishing assistant. Brand artwork content is locked and immutable.',
       env,
       label: 'refinement',
+      schema: REFINEMENT_JSON_SCHEMA,
       validate: (value) => value && typeof value === 'object' && Array.isArray(value.slots),
     });
     return {
