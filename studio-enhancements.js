@@ -1,6 +1,9 @@
 const $ = (id) => document.getElementById(id);
 
 const nativeFetch = window.fetch.bind(window);
+let freshSessionPending = false;
+let hiddenVersionCount = 0;
+let versionObserver = null;
 
 function fidelitySettings() {
   return {
@@ -11,11 +14,12 @@ function fidelitySettings() {
   };
 }
 
-// Keep the direct-render API backwards compatible while enriching every
-// request with user-facing fidelity controls. This stays outside the core
-// renderer so the advanced deterministic workflow remains untouched.
+// Enrich direct-render requests with fidelity controls and make the first
+// generation after "Novo mockup" independent from any previous version.
 window.fetch = async (input, init = {}) => {
   const url = typeof input === 'string' ? input : input?.url || '';
+  let isFreshGeneration = false;
+
   if (url.includes('/api/render-mockup') && typeof init?.body === 'string') {
     try {
       const body = JSON.parse(init.body);
@@ -27,7 +31,23 @@ window.fetch = async (input, init = {}) => {
       // Preserve the original request if a future caller uses another body format.
     }
   }
-  return nativeFetch(input, init);
+
+  if (freshSessionPending && url.includes('/api/generate-scene') && typeof init?.body === 'string') {
+    try {
+      const body = JSON.parse(init.body);
+      init = {
+        ...init,
+        body: JSON.stringify({ ...body, previousImage: null, iteration: '' }),
+      };
+      isFreshGeneration = true;
+    } catch {
+      // The normal generator validation will handle an unexpected body format.
+    }
+  }
+
+  const response = await nativeFetch(input, init);
+  if (isFreshGeneration && response.ok) freshSessionPending = false;
+  return response;
 };
 
 function addStudioStyles() {
@@ -75,10 +95,85 @@ function addStudioStyles() {
     #mockupApplyInstruction{min-height:74px!important;margin:4px 0 8px!important}
     #advancedMappingBtn{border-style:dashed!important;color:#b9c8d4!important}
     .auto-status.ok{color:#72deb1!important}.auto-status.warn{color:#f1c572!important}
+    .reset-flash{animation:resetPulse .42s ease}@keyframes resetPulse{0%{opacity:.55}100%{opacity:1}}
     *{scrollbar-width:thin;scrollbar-color:#34495e transparent}
     @media(max-width:900px){.app{grid-template-columns:1fr}.rail{box-shadow:none}.stage{padding:18px}.fidelity-checks{grid-template-columns:1fr}}
   `;
   document.head.appendChild(style);
+}
+
+function clearFileInput(id) {
+  const input = $(id);
+  if (!input) return;
+  input.value = '';
+}
+
+function watchVersionHistory() {
+  const versions = $('versions');
+  if (!versions || versionObserver) return;
+  const hidePreviousSessionVersions = () => {
+    [...versions.children].forEach((child, index) => {
+      child.style.display = index < hiddenVersionCount ? 'none' : '';
+    });
+  };
+  versionObserver = new MutationObserver(hidePreviousSessionVersions);
+  versionObserver.observe(versions, { childList: true });
+}
+
+function softResetStudio() {
+  const hasWork = !$('empty')?.classList.contains('hidden') || Boolean($('brandFiles')?.files?.length) || Boolean($('mockupPrompt')?.value?.trim());
+  if (hasWork && !window.confirm('Começar um novo mockup? A cena, as artes e o histórico visual desta sessão serão limpos.')) return;
+
+  hiddenVersionCount = $('versions')?.children?.length || hiddenVersionCount;
+  freshSessionPending = true;
+
+  const reopen = $('reopenSceneBtn');
+  if (reopen && !reopen.classList.contains('hidden')) reopen.click();
+
+  for (const id of ['mockupPrompt', 'surfaceHint', 'iterationPrompt', 'mockupApplyInstruction']) {
+    if ($(id)) $(id).value = '';
+  }
+  if ($('sceneStyle')) $('sceneStyle').value = 'commercial';
+  if ($('desiredSlots')) $('desiredSlots').value = '';
+  if ($('mockupFidelityMode')) $('mockupFidelityMode').value = 'exact';
+  for (const id of ['preserveAspectRatio', 'limitDeformation', 'safeMargins']) if ($(id)) $(id).checked = true;
+  if ($('fidelityDescription')) $('fidelityDescription').textContent = fidelityDescription('exact');
+
+  for (const id of ['productRefs', 'sceneRefs', 'photoFile', 'generatedFallback']) clearFileInput(id);
+  clearFileInput('brandFiles');
+  $('brandFiles')?.dispatchEvent(new Event('change', { bubbles: true }));
+  $('productRefs')?.dispatchEvent(new Event('change', { bubbles: true }));
+  $('sceneRefs')?.dispatchEvent(new Event('change', { bubbles: true }));
+
+  const canvas = $('display');
+  canvas?.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
+  $('universalOverlay')?.getContext('2d')?.clearRect(0, 0, $('universalOverlay').width, $('universalOverlay').height);
+  $('empty')?.classList.remove('hidden');
+  $('canvasHint')?.classList.add('hidden');
+  $('iterationBox')?.classList.add('hidden');
+  if ($('versions')) $('versions').innerHTML = '';
+  if ($('universalMappingList')) $('universalMappingList').innerHTML = '';
+
+  const status = $('status');
+  if (status) {
+    status.textContent = 'Nova sessão pronta. Descreva o próximo mockup.';
+    status.className = 'status ok';
+  }
+  const generateStatus = $('generateStatus');
+  if (generateStatus) {
+    generateStatus.textContent = 'Novo mockup pronto. Escreva um pedido ou envie referências.';
+    generateStatus.className = 'status';
+  }
+  const flowStatus = $('autoApplyFlowStatus');
+  if (flowStatus) {
+    flowStatus.textContent = 'Envie uma arte depois de aprovar a nova cena.';
+    flowStatus.className = 'auto-status';
+  }
+
+  document.querySelector('.rail')?.classList.add('reset-flash');
+  setTimeout(() => document.querySelector('.rail')?.classList.remove('reset-flash'), 450);
+  document.dispatchEvent(new CustomEvent('mockup:soft-reset'));
+  $('mockupPrompt')?.focus();
 }
 
 function addNewMockupControl() {
@@ -89,13 +184,7 @@ function addNewMockupControl() {
   bar.className = 'studio-quickbar';
   bar.innerHTML = '<button id="newMockupBtn" type="button" class="new-mockup-btn">＋ Novo mockup</button>';
   brand.insertAdjacentElement('afterend', bar);
-  $('newMockupBtn')?.addEventListener('click', () => {
-    const hasWork = !$('empty')?.classList.contains('hidden') || Boolean($('brandFiles')?.files?.length) || Boolean($('mockupPrompt')?.value?.trim());
-    if (hasWork && !window.confirm('Começar um novo mockup? A cena, as artes e as versões desta sessão serão limpas.')) return;
-    const next = new URL(window.location.href);
-    next.searchParams.set('new', String(Date.now()));
-    window.location.replace(next.toString());
-  });
+  $('newMockupBtn')?.addEventListener('click', softResetStudio);
 }
 
 function fidelityDescription(mode) {
@@ -143,7 +232,14 @@ function improveFlowCopy() {
 }
 
 function bridgeDirectCompletion() {
-  document.addEventListener('mockup:direct-rendered', () => {
+  document.addEventListener('mockup:direct-rendered', (event) => {
+    const result = event.detail?.result || {};
+    const status = $('autoApplyFlowStatus');
+    if (status) {
+      const label = result.fidelity === 'exact' ? 'Fidelidade máxima' : result.fidelity === 'balanced' ? 'Equilibrado' : 'Integração forte';
+      status.textContent = `Mockup aplicado · ${label}. Compare detalhes da arte antes de salvar.`;
+      status.className = 'auto-status ok';
+    }
     document.dispatchEvent(new CustomEvent('mockup:ai-finalized', { detail: { source: 'direct-render' } }));
   });
 }
@@ -151,6 +247,7 @@ function bridgeDirectCompletion() {
 function bootEnhancements() {
   addStudioStyles();
   addNewMockupControl();
+  watchVersionHistory();
   improveFlowCopy();
   if (!addFidelityControls()) {
     setTimeout(bootEnhancements, 120);
