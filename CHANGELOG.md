@@ -3,15 +3,34 @@
 ## Unreleased
 
 ### Added
-- professional product/research positioning;
-- architecture and validation documentation;
-- security and contribution guidance;
-- CI regression checks for the static runtime contract.
+- guided Studio UX organized around Brief → Scene → Arts → Mockup;
+- natural-language generation request with optional product/model and scene/inspiration references;
+- Generate and Iterate client contract with in-session version history;
+- provider-agnostic `/api/generate-scene` contract;
+- multi-file brand/artwork upload;
+- multiple editable mockup slots in one scene;
+- automatic artwork-to-slot assignment;
+- provider slot metadata normalization;
+- local multi-area detection fallback;
+- manual add/remove/reassign controls per mockup area;
+- per-area Apply/Replace and realism controls;
+- regression tests for multi-slot state and iterative generation requests.
+
+### Changed
+- Photo Studio now uses `studio-app.js` as the active V2 implementation;
+- scene briefing accepts either natural language, references, or both;
+- generated scenes can request up to eight mockup slots;
+- README and product vision now describe the guided multi-art workflow.
+
+### Preserved
+- `index.html` remains the Cylinder Lab for the later cylindrical/proxy-3D pass;
+- older V2 modules remain temporarily for comparison while the new Studio is validated.
 
 ### Clarified
-- automatic detection is a coarse bootstrap, not a can-specific classifier;
-- manual fitting is an intentional fallback;
-- third-party runtime/model assets are network dependencies even though user images remain local.
+- scene generation is not yet connected to a production provider;
+- generated slot metadata is optional and falls back to local detection/manual areas;
+- automatic detection proposes geometry but does not replace user correction;
+- old-art cleanup remains deterministic neutralization, not semantic inpainting.
 
 ## Prototype baseline
 
