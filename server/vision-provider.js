@@ -307,6 +307,24 @@ function normalizedArtworkAspectRatio(value) {
   return Math.max(0.1, Math.min(10, ratio));
 }
 
+function slotCenter(slot) {
+  const quad = Array.isArray(slot?.quad) ? slot.quad : [];
+  if (quad.length !== 4) return { x: 0, y: 0 };
+  return quad.reduce((acc, point) => ({
+    x: acc.x + Number(point.x || 0) / 4,
+    y: acc.y + Number(point.y || 0) / 4,
+  }), { x: 0, y: 0 });
+}
+
+export function sortVisionSlots(slots = []) {
+  return [...slots].sort((a, b) => {
+    const centerA = slotCenter(a);
+    const centerB = slotCenter(b);
+    const sameRow = Math.abs(centerA.y - centerB.y) < 0.08;
+    return sameRow ? centerA.x - centerB.x : centerA.y - centerB.y;
+  });
+}
+
 export function createUniversalFallbackSlots() {
   return normalizeUniversalSlots({
     slots: [{
@@ -323,8 +341,22 @@ export function createUniversalFallbackSlots() {
   }, 1);
 }
 
-export function layoutVisionResponseFormat() {
-  return jsonResponseFormat(LAYOUT_JSON_SCHEMA);
+export function layoutVisionResponseFormat(requested = null) {
+  const requestedCount = Number(requested);
+  if (!Number.isFinite(requestedCount) || requestedCount <= 0) {
+    return jsonResponseFormat(LAYOUT_JSON_SCHEMA);
+  }
+  const count = Math.max(1, Math.min(8, Math.floor(requestedCount)));
+  return jsonResponseFormat({
+    ...LAYOUT_JSON_SCHEMA,
+    properties: {
+      slots: {
+        ...LAYOUT_JSON_SCHEMA.properties.slots,
+        minItems: 1,
+        maxItems: count,
+      },
+    },
+  });
 }
 
 export function singleApplicationVisionResponseFormat() {
@@ -340,7 +372,13 @@ export function singleApplicationRootPrompt() {
 }
 
 export function usableVisionSlots(value, requested = 8) {
-  return normalizeUniversalSlots(value, requested).filter(isUsableMockupSlot);
+  const slots = normalizeUniversalSlots(value, requested).filter(isUsableMockupSlot);
+  return sortVisionSlots(slots);
+}
+
+export function hasRequestedVisionCoverage(value, requested = 1) {
+  const count = Math.max(1, Math.min(8, Number(requested) || 1));
+  return usableVisionSlots(value, count).length >= count;
 }
 
 export async function analyzeSingleApplication(body = {}, env = process.env) {
@@ -398,33 +436,42 @@ export async function analyzeUniversalLayout(body = {}, env = process.env) {
   await ensureAgreement(env);
   const image = imageValue(body.imageDataUrl);
   const requested = Math.max(1, Math.min(8, Number(body.desiredSlots || body.artworkCount || 1) || 1));
-  const prompt = `Analyze this mockup image and identify ${requested} clean visual surface(s) where uploaded artwork can realistically be placed. Work generically: do not assume cup, bottle, poster, screen, box or any particular object type. Return JSON only using this exact schema: {"slots":[{"id":"1","label":"short surface description","confidence":0.0,"quad":[{"x":0.0,"y":0.0},{"x":0.0,"y":0.0},{"x":0.0,"y":0.0},{"x":0.0,"y":0.0}]}]}. Coordinates must be normalized from 0 to 1, ordered top-left, top-right, bottom-right, bottom-left. Select the actual exterior printable/display face where a flat artwork should visibly appear. Never select an interior cavity, opening, rim, handle, hole, background, shadow, negative space, or the full object bounding box. For a curved object, choose the central visible exterior printable region and approximate that usable region with four well-separated points inside its visible boundaries. The quadrilateral must have meaningful width and height and must not collapse to a line or point. Prefer visible, unobstructed surfaces and preserve perspective. If fewer than ${requested} reliable surfaces exist, return only the reliable ones. ${STRICT_JSON_REMINDER}`;
+  const multiArtInstruction = requested > 1
+    ? `MULTI-ART REQUIREMENT: scan the complete image from top-left to bottom-right and find ${requested} DISTINCT usable surfaces. Blank cards, panels, posters, screens, sheets, frames, package faces and display areas each count as separate surfaces when they are physically separate. When at least ${requested} real usable surfaces are visible, return exactly ${requested}; do not stop after the easiest or most central surface. Do not merge several panels into one slot. Do not return duplicate or strongly overlapping slots. Order the returned slots in visual reading order: top-to-bottom, and left-to-right within the same row. If the image truly contains fewer than ${requested} physical usable surfaces, do not invent background areas or fake surfaces.`
+    : 'Choose the single clearest physically usable printable/display surface.';
+  const prompt = `Analyze this mockup image and identify ${requested} clean visual surface(s) where uploaded artwork can realistically be placed. ${multiArtInstruction} Work generically: do not assume cup, bottle, poster, screen, box or any particular object type. Return JSON only using this exact schema: {"slots":[{"id":"1","label":"short surface description","confidence":0.0,"quad":[{"x":0.0,"y":0.0},{"x":0.0,"y":0.0},{"x":0.0,"y":0.0},{"x":0.0,"y":0.0}]}]}. Coordinates must be normalized from 0 to 1, ordered top-left, top-right, bottom-right, bottom-left. Select the actual exterior printable/display face where a flat artwork should visibly appear. Never select an interior cavity, opening, rim, handle, hole, background, shadow, negative space, or the full object bounding box. For a curved object, choose the central visible exterior printable region and approximate that usable region with four well-separated points inside its visible boundaries. The quadrilateral must have meaningful width and height and must not collapse to a line or point. Prefer visible, unobstructed surfaces and preserve perspective. ${STRICT_JSON_REMINDER}`;
+  const layoutSchema = layoutVisionResponseFormat(requested).json_schema;
 
   try {
     const parsed = await requestStructuredVision({
       image,
       prompt,
-      system: 'You are a precise visual geometry assistant for professional mockups. Detect only surfaces where artwork can actually be rendered and seen.',
+      system: 'You are a precise visual geometry assistant for professional universal mockups. Detect every distinct requested surface across the full composition. Never collapse a multi-panel layout into a single central surface.',
       env,
       label: 'layout',
-      schema: LAYOUT_JSON_SCHEMA,
-      validate: (value) => usableVisionSlots(value, requested).length > 0,
+      schema: layoutSchema,
+      validate: (value) => hasRequestedVisionCoverage(value, requested),
+      retryInstruction: `The previous result did not provide all ${requested} distinct usable surfaces. Rescan the WHOLE image, including top, bottom, left, right and center. Return ${requested} separate real surface quadrilaterals when they are visible; do not repeat, merge or overlap the same area.`,
     });
     const slots = usableVisionSlots(parsed, requested);
     return {
       slots,
+      requestedSlots: requested,
       mappingStatus: 'validated',
       surfaceValidated: true,
       provider: 'cloudflare-vision',
       model: VISION_MODEL,
     };
   } catch (error) {
-    console.warn('[vision:layout] duas tentativas falharam; usando fallback universal revisável.', error);
+    console.warn('[vision:layout] não foi possível validar todas as áreas solicitadas; bloqueando aplicação parcial.', error);
     return {
       slots: createUniversalFallbackSlots(),
+      requestedSlots: requested,
       mappingStatus: 'fallback',
       surfaceValidated: false,
-      warning: 'A IA não encontrou uma superfície imprimível válida. Revise ou tente novamente.',
+      warning: requested > 1
+        ? `A IA não conseguiu validar ${requested} áreas distintas. Nenhuma arte foi aplicada para evitar uma distribuição parcial ou incorreta. Tente mapear novamente ou revise as áreas.`
+        : 'A IA não encontrou uma superfície imprimível válida. Revise ou tente novamente.',
       diagnostic: clean(error?.message, 240),
       provider: 'universal-fallback',
       model: VISION_MODEL,
