@@ -17,7 +17,10 @@ const U = {
   finalized: false,
   surfaceValidated: false,
   mappingStatus: 'idle',
-  workflowMode: 'single',
+  workflowMode: 'direct',
+  directRenderImage: null,
+  directRenderReady: false,
+  directRenderMeta: null,
 };
 
 const overlay = document.createElement('canvas');
@@ -113,11 +116,35 @@ function fileToImage(file) {
   });
 }
 
+function loadImage(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('A imagem final retornada pela IA é inválida.'));
+    image.src = dataUrl;
+  });
+}
+
 async function loadArtworks() {
   const files = [...($('brandFiles')?.files || [])];
   U.artworks = [];
   for (const file of files) U.artworks.push(await fileToImage(file));
   return U.artworks;
+}
+
+function resizeSourceToDataUrl(source, maxSide = 480, type = 'image/png', quality = 0.92) {
+  const sourceWidth = source.naturalWidth || source.width || 1;
+  const sourceHeight = source.naturalHeight || source.height || 1;
+  const scale = Math.min(1, maxSide / Math.max(sourceWidth, sourceHeight));
+  const width = Math.max(1, Math.round(sourceWidth * scale));
+  const height = Math.max(1, Math.round(sourceHeight * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, width, height);
+  ctx.drawImage(source, 0, 0, width, height);
+  return canvas.toDataURL(type, quality);
 }
 
 function affineFromTriangles(src, dst) {
@@ -260,6 +287,11 @@ function renderOverlay({ guides = false } = {}) {
   syncOverlayGeometry();
   overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
 
+  if (U.directRenderReady && U.directRenderImage) {
+    overlayCtx.drawImage(U.directRenderImage, 0, 0, overlay.width, overlay.height);
+    return;
+  }
+
   if (U.surfaceValidated) {
     U.mapping.forEach((slot) => {
       if (slot.artworkIndex == null) return;
@@ -293,13 +325,20 @@ function mappingList() {
     $('autoApplyFlowStatus')?.insertAdjacentElement('afterend', box);
   }
   box.innerHTML = '';
+
+  if (U.directRenderReady) {
+    const row = document.createElement('div');
+    row.className = 'tiny';
+    row.textContent = 'Aplicação direta com IA · cena + Arte 1 → mockup final';
+    box.appendChild(row);
+    return;
+  }
+
   U.mapping.forEach((slot) => {
     const row = document.createElement('div');
     row.className = 'tiny';
     if (!U.surfaceValidated) {
       row.textContent = `Área ${slot.index} · ${slot.label} · sem aplicação até validação`;
-    } else if (U.workflowMode === 'single') {
-      row.textContent = `Aplicação automática · ${slot.label} ← Arte 1`;
     } else {
       const art = slot.artworkIndex == null ? 'sem arte' : `Arte ${slot.artworkIndex + 1}`;
       row.textContent = `Área ${slot.index} · ${slot.label} ← ${art}`;
@@ -308,7 +347,7 @@ function mappingList() {
   });
 }
 
-function resetApplicationState(mode = uploadedFileCount() > 1 ? 'advanced' : 'single') {
+function resetApplicationState(mode = uploadedFileCount() > 1 ? 'advanced' : 'direct') {
   U.slots = [];
   U.mapping = [];
   U.plan = null;
@@ -316,6 +355,9 @@ function resetApplicationState(mode = uploadedFileCount() > 1 ? 'advanced' : 'si
   U.surfaceValidated = false;
   U.mappingStatus = 'idle';
   U.workflowMode = mode;
+  U.directRenderImage = null;
+  U.directRenderReady = false;
+  U.directRenderMeta = null;
   overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
   mappingList();
   setFinalizeAvailability();
@@ -338,59 +380,45 @@ async function applySingleWithAI() {
   const advanced = $('advancedMappingBtn');
   if (primary) primary.disabled = true;
   if (advanced) advanced.disabled = true;
-  U.workflowMode = 'single';
-  U.surfaceValidated = false;
-  U.mappingStatus = 'single-analyzing';
-  U.finalized = false;
-  setFinalizeAvailability();
-  setFlowStatus('A IA está planejando a aplicação da arte sem redesenhar a marca…');
+  resetApplicationState('direct');
+  U.mappingStatus = 'direct-rendering';
+  setFlowStatus('A IA está usando a cena e a arte como referências para gerar o mockup final…');
 
   try {
     await prepareApplication();
     const artwork = U.artworks[0];
-    const artworkAspectRatio = artwork?.image?.naturalHeight
-      ? artwork.image.naturalWidth / artwork.image.naturalHeight
-      : 1;
     const instruction = String($('mockupApplyInstruction')?.value || '').trim();
-    const response = await fetch('/api/apply-plan', {
+    const sceneReference = resizeSourceToDataUrl(baseCanvas, 480, 'image/jpeg', 0.9);
+    const artworkReference = resizeSourceToDataUrl(artwork.image, 480, 'image/png');
+
+    const response = await fetch('/api/render-mockup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        imageDataUrl: U.baseDataUrl,
-        artworkAspectRatio,
+        sceneImageDataUrl: sceneReference,
+        artworkImageDataUrl: artworkReference,
         instruction,
+        outputWidth: baseCanvas.width,
+        outputHeight: baseCanvas.height,
       }),
     });
     const result = await response.json();
-    if (!response.ok) throw new Error(result?.error || `apply ${response.status}`);
+    if (!response.ok) throw new Error(result?.error || `render ${response.status}`);
+    if (!result?.imageDataUrl) throw new Error('A IA não retornou a imagem final.');
 
-    U.slots = result.target ? [result.target] : (result.slots || []);
-    U.mapping = mapArtworksToSlots(1, U.slots);
-    U.mappingStatus = result.applicationStatus || result.mappingStatus || 'fallback';
-    U.surfaceValidated = result.surfaceValidated === true && U.mappingStatus === 'validated' && U.slots.length === 1;
-
-    if (U.surfaceValidated) {
-      U.plan = {
-        slots: [{ ...(result.integration || {}), index: 1 }],
-        summary: String(result.summary || ''),
-        artworkFidelityLocked: true,
-      };
-      U.finalized = true;
-      renderOverlay({ guides: false });
-      mappingList();
-      setFlowStatus('Mockup aplicado com IA. A arte original foi preservada; apenas geometria, luz e integração visual foram ajustadas.', 'ok');
-      document.dispatchEvent(new CustomEvent('mockup:ai-applied', { detail: { plan: result } }));
-    } else {
-      U.plan = null;
-      U.finalized = false;
-      renderOverlay({ guides: true });
-      mappingList();
-      setFlowStatus(result.warning || 'A IA não conseguiu aplicar automaticamente. Use Revisar áreas ou tente novamente.', 'warn');
-    }
+    U.directRenderImage = await loadImage(result.imageDataUrl);
+    U.directRenderReady = true;
+    U.directRenderMeta = result;
+    U.mappingStatus = 'direct-rendered';
+    U.finalized = true;
+    renderOverlay({ guides: false });
+    mappingList();
+    setFlowStatus('Mockup final gerado com IA usando a cena e a arte como referências. Confira letras e detalhes finos do rótulo antes de salvar.', 'ok');
+    document.dispatchEvent(new CustomEvent('mockup:direct-rendered', { detail: { result } }));
   } catch (error) {
     console.warn(error);
-    resetApplicationState('single');
-    setFlowStatus(`Não foi possível aplicar o mockup com IA: ${error.message}`, 'warn');
+    resetApplicationState('direct');
+    setFlowStatus(`Não foi possível gerar o mockup direto: ${error.message}. Você ainda pode usar Revisar áreas / fidelidade exata.`, 'warn');
   } finally {
     if (primary) primary.disabled = false;
     if (advanced) advanced.disabled = false;
@@ -407,12 +435,9 @@ async function analyzeLayout() {
   const advanced = $('advancedMappingBtn');
   if (button) button.disabled = true;
   if (advanced) advanced.disabled = true;
-  U.workflowMode = 'advanced';
-  U.surfaceValidated = false;
+  resetApplicationState('advanced');
   U.mappingStatus = 'analyzing';
-  U.finalized = false;
-  setFinalizeAvailability();
-  setFlowStatus('A IA está identificando superfícies para revisão avançada…');
+  setFlowStatus('A IA está identificando superfícies para o modo avançado de fidelidade…');
   try {
     await prepareApplication();
     const desiredSlots = Number($('desiredSlots')?.value) || files.length;
@@ -530,7 +555,7 @@ function ensureUniversalControls() {
     const advanced = document.createElement('button');
     advanced.id = 'advancedMappingBtn';
     advanced.type = 'button';
-    advanced.textContent = 'Revisar áreas / modo avançado';
+    advanced.textContent = 'Revisar áreas / fidelidade exata';
     advanced.style.width = '100%';
     advanced.style.marginTop = '8px';
     $('finalizeAiBtn')?.insertAdjacentElement('afterend', advanced);
@@ -559,11 +584,11 @@ function boot() {
   if (!ensureUniversalControls()) return setTimeout(boot, 120);
   $('brandFiles')?.addEventListener('change', async () => {
     const expected = uploadedFileCount();
-    resetApplicationState(expected > 1 ? 'advanced' : 'single');
+    resetApplicationState(expected > 1 ? 'advanced' : 'direct');
     updateModeControls();
     if (expected) {
       setFlowStatus(expected === 1
-        ? 'Arte carregada. Preparando aplicação automática com IA…'
+        ? 'Arte carregada. Preparando edição direta do mockup com IA…'
         : 'Artes carregadas. Preparando mapeamento automático das áreas…');
       await waitForLegacyAssetLoad(expected);
       if (expected === 1) applySingleWithAI();
@@ -573,13 +598,24 @@ function boot() {
   document.addEventListener('mockup:mapping-ready', setFinalizeAvailability);
   window.addEventListener('resize', () => {
     syncOverlayGeometry();
-    if (U.mapping.length) {
-      const guides = !U.surfaceValidated || (U.workflowMode === 'advanced' && !U.finalized);
+    if (U.directRenderReady || U.mapping.length) {
+      const guides = !U.directRenderReady && (!U.surfaceValidated || (U.workflowMode === 'advanced' && !U.finalized));
       renderOverlay({ guides });
     }
   });
 
   $('saveBtn')?.addEventListener('click', (event) => {
+    if (U.directRenderReady) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const out = mergedCanvas({ guides: false });
+      const link = document.createElement('a');
+      link.download = 'mockup-vision-ai.png';
+      link.href = out.toDataURL('image/png');
+      link.click();
+      return;
+    }
+
     if (!U.mapping.length) return;
     if (!U.surfaceValidated) {
       event.preventDefault();
