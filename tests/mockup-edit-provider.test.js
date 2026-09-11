@@ -74,3 +74,17 @@ test('exact fidelity prompt protects portraits proportions and safe margins', ()
   assert.match(prompt, /artwork preservation is more important than filling/i);
   assert.match(prompt, /rigid printed decal/i);
 });
+
+test('edit prompt treats typography as rigid semantic content and prefers legibility over curved fill', () => {
+  const prompt = buildMockupEditPrompt('', {
+    fidelityMode: 'balanced',
+    preserveAspectRatio: true,
+    limitDeformation: true,
+    safeMargins: true,
+  });
+  assert.match(prompt, /typography and letterforms as rigid semantic content/i);
+  assert.match(prompt, /Preserve exact wording, line breaks, hierarchy, baseline relationships and relative spacing/i);
+  assert.match(prompt, /Never bend individual letters/i);
+  assert.match(prompt, /smaller inset placement with safe margins/i);
+  assert.match(prompt, /Legibility and semantic fidelity are more important than filling/i);
+});
