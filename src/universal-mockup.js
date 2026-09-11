@@ -142,6 +142,23 @@ export function normalizeRefinementPlan(input, slotCount = 0) {
   };
 }
 
+export function normalizeSingleApplicationPlan(input = {}) {
+  const target = normalizeUniversalSlots({ slots: [input?.target] }, 1).find(isUsableMockupSlot) || null;
+  const integrationInput = input?.integration && typeof input.integration === 'object'
+    ? { ...input.integration, index: 1 }
+    : { index: 1 };
+  const refinement = normalizeRefinementPlan({
+    summary: input?.summary,
+    slots: [integrationInput],
+  }, 1);
+  return {
+    target,
+    integration: refinement.slots[0],
+    summary: refinement.summary,
+    artworkFidelityLocked: true,
+  };
+}
+
 export function universalMappingMessage(artworkCount, slotCount) {
   const arts = Math.max(0, Number(artworkCount) || 0);
   const slots = Math.max(0, Number(slotCount) || 0);
