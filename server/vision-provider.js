@@ -1,11 +1,13 @@
 import {
   isUsableMockupSlot,
   normalizeRefinementPlan,
+  normalizeSingleApplicationPlan,
   normalizeUniversalSlots,
 } from '../src/universal-mockup.js';
 
 const VISION_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
 const STRICT_JSON_REMINDER = 'Return only valid JSON. Do not include markdown. Do not include explanations. Do not include code fences.';
+const SINGLE_APPLICATION_ROOT_PROMPT = `Apply the uploaded immutable artwork to the most appropriate visible printable or display surface in the approved mockup. The artwork itself is locked brand content: never rewrite, redraw, recolor, restyle, crop away, replace, hallucinate, or regenerate letters, wording, typography, logos, drawings, illustrations, or internal composition. Your job is only to choose a physically plausible target quadrilateral and conservative integration parameters. The browser will render the original uploaded pixels deterministically. Respect the product geometry, perspective, material, existing illumination, shadows and reflections. Never choose an interior cavity, opening, rim, handle, hole, background, shadow, negative space, or the full object bounding box.`;
 let agreementPromise = null;
 
 const POINT_SCHEMA = {
@@ -17,29 +19,63 @@ const POINT_SCHEMA = {
   required: ['x', 'y'],
 };
 
+const SLOT_SCHEMA = {
+  type: 'object',
+  properties: {
+    id: { type: 'string' },
+    label: { type: 'string' },
+    confidence: { type: 'number', minimum: 0, maximum: 1 },
+    quad: {
+      type: 'array',
+      minItems: 4,
+      maxItems: 4,
+      items: POINT_SCHEMA,
+    },
+  },
+  required: ['id', 'label', 'confidence', 'quad'],
+};
+
+const INTEGRATION_SCHEMA = {
+  type: 'object',
+  properties: {
+    preserveLight: { type: 'number' },
+    brightness: { type: 'number' },
+    contrast: { type: 'number' },
+    saturation: { type: 'number' },
+    opacity: { type: 'number' },
+    blend: { type: 'string' },
+    note: { type: 'string' },
+  },
+  required: [
+    'preserveLight',
+    'brightness',
+    'contrast',
+    'saturation',
+    'opacity',
+    'blend',
+    'note',
+  ],
+};
+
 const LAYOUT_JSON_SCHEMA = {
   type: 'object',
   properties: {
     slots: {
       type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          id: { type: 'string' },
-          label: { type: 'string' },
-          confidence: { type: 'number', minimum: 0, maximum: 1 },
-          quad: {
-            type: 'array',
-            minItems: 4,
-            maxItems: 4,
-            items: POINT_SCHEMA,
-          },
-        },
-        required: ['id', 'label', 'confidence', 'quad'],
-      },
+      items: SLOT_SCHEMA,
     },
   },
   required: ['slots'],
+};
+
+const SINGLE_APPLICATION_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    summary: { type: 'string' },
+    target: SLOT_SCHEMA,
+    integration: INTEGRATION_SCHEMA,
+  },
+  required: ['summary', 'target', 'integration'],
 };
 
 const REFINEMENT_JSON_SCHEMA = {
@@ -52,24 +88,9 @@ const REFINEMENT_JSON_SCHEMA = {
         type: 'object',
         properties: {
           index: { type: 'number' },
-          preserveLight: { type: 'number' },
-          brightness: { type: 'number' },
-          contrast: { type: 'number' },
-          saturation: { type: 'number' },
-          opacity: { type: 'number' },
-          blend: { type: 'string' },
-          note: { type: 'string' },
+          ...INTEGRATION_SCHEMA.properties,
         },
-        required: [
-          'index',
-          'preserveLight',
-          'brightness',
-          'contrast',
-          'saturation',
-          'opacity',
-          'blend',
-          'note',
-        ],
+        required: ['index', ...INTEGRATION_SCHEMA.required],
       },
     },
   },
@@ -225,11 +246,20 @@ export function jsonResponseFormat(schema) {
   };
 }
 
-async function requestStructuredVision({ image, prompt, system, env, label, validate, schema }) {
+async function requestStructuredVision({
+  image,
+  prompt,
+  system,
+  env,
+  label,
+  validate,
+  schema,
+  retryInstruction = 'Return a different, clearly usable exterior/display/print surface with a non-degenerate quadrilateral.',
+}) {
   let lastError = null;
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const retryReminder = attempt === 2
-      ? `\n\n${STRICT_JSON_REMINDER} The previous candidate was rejected. Return a different, clearly usable exterior/display/print surface with a non-degenerate quadrilateral.`
+      ? `\n\n${STRICT_JSON_REMINDER} The previous candidate was rejected. ${retryInstruction}`
       : '';
     try {
       const payload = await postModel({
@@ -247,7 +277,7 @@ async function requestStructuredVision({ image, prompt, system, env, label, vali
       const parsed = structured || parseJsonText(raw);
 
       if (validate && !validate(parsed)) {
-        throw new Error('A resposta JSON não contém uma superfície imprimível geometricamente válida.');
+        throw new Error('A resposta JSON não respeitou o contrato visual esperado.');
       }
       logVisionAttempt(label, attempt, raw, sanitized);
       return parsed;
@@ -271,6 +301,12 @@ function imageValue(imageDataUrl) {
   return value;
 }
 
+function normalizedArtworkAspectRatio(value) {
+  const ratio = Number(value);
+  if (!Number.isFinite(ratio) || ratio <= 0) return 1;
+  return Math.max(0.1, Math.min(10, ratio));
+}
+
 export function createUniversalFallbackSlots() {
   return normalizeUniversalSlots({
     slots: [{
@@ -291,12 +327,71 @@ export function layoutVisionResponseFormat() {
   return jsonResponseFormat(LAYOUT_JSON_SCHEMA);
 }
 
+export function singleApplicationVisionResponseFormat() {
+  return jsonResponseFormat(SINGLE_APPLICATION_JSON_SCHEMA);
+}
+
 export function refinementVisionResponseFormat() {
   return jsonResponseFormat(REFINEMENT_JSON_SCHEMA);
 }
 
+export function singleApplicationRootPrompt() {
+  return SINGLE_APPLICATION_ROOT_PROMPT;
+}
+
 export function usableVisionSlots(value, requested = 8) {
   return normalizeUniversalSlots(value, requested).filter(isUsableMockupSlot);
+}
+
+export async function analyzeSingleApplication(body = {}, env = process.env) {
+  await ensureAgreement(env);
+  const image = imageValue(body.imageDataUrl);
+  const userInstruction = clean(body.instruction, 1200);
+  const artworkAspectRatio = normalizedArtworkAspectRatio(body.artworkAspectRatio);
+  const instructionText = userInstruction
+    ? `Additional user placement instruction: ${JSON.stringify(userInstruction)}. Follow it only when it does not violate artwork fidelity or physical plausibility.`
+    : 'No additional placement instruction was supplied. Choose the primary, most useful printable/display surface automatically.';
+  const prompt = `${SINGLE_APPLICATION_ROOT_PROMPT}\n\n${instructionText}\nThe uploaded artwork aspect ratio is approximately ${artworkAspectRatio.toFixed(3)}. Preserve the complete artwork inside the chosen target instead of cropping brand content. Coordinates must be normalized 0..1 and ordered top-left, top-right, bottom-right, bottom-left. For curved products, choose the central visible exterior print region and approximate it with a useful four-point quadrilateral. Return a conservative integration plan. Allowed blend modes: source-over, multiply, overlay, soft-light. ${STRICT_JSON_REMINDER}`;
+
+  try {
+    const parsed = await requestStructuredVision({
+      image,
+      prompt,
+      system: 'You are the placement planner for a professional universal mockup studio. Brand pixels are immutable and are rendered by code, not generated by you.',
+      env,
+      label: 'single-apply',
+      schema: SINGLE_APPLICATION_JSON_SCHEMA,
+      validate: (value) => Boolean(normalizeSingleApplicationPlan(value).target),
+      retryInstruction: 'Choose one physically usable exterior printable/display surface. Do not choose an opening, interior, handle, background, shadow, or degenerate quad.',
+    });
+    const plan = normalizeSingleApplicationPlan(parsed);
+    if (!plan.target) throw new Error('A IA não retornou um alvo imprimível utilizável.');
+    return {
+      target: plan.target,
+      integration: plan.integration,
+      summary: plan.summary,
+      slots: [plan.target],
+      applicationStatus: 'validated',
+      mappingStatus: 'validated',
+      surfaceValidated: true,
+      artworkFidelityLocked: true,
+      provider: 'cloudflare-vision',
+      model: VISION_MODEL,
+    };
+  } catch (error) {
+    console.warn('[vision:single-apply] duas tentativas falharam; mantendo revisão avançada disponível.', error);
+    return {
+      slots: createUniversalFallbackSlots(),
+      applicationStatus: 'fallback',
+      mappingStatus: 'fallback',
+      surfaceValidated: false,
+      artworkFidelityLocked: true,
+      warning: 'A IA não conseguiu aplicar a arte automaticamente. Use Revisar áreas ou tente novamente.',
+      diagnostic: clean(error?.message, 240),
+      provider: 'universal-fallback',
+      model: VISION_MODEL,
+    };
+  }
 }
 
 export async function analyzeUniversalLayout(body = {}, env = process.env) {
@@ -351,6 +446,7 @@ export async function analyzeRefinement(body = {}, env = process.env) {
       env,
       label: 'refinement',
       schema: REFINEMENT_JSON_SCHEMA,
+      retryInstruction: 'Return a valid conservative integration plan for every numbered slot without proposing any content edits.',
       validate: (value) => value && typeof value === 'object' && Array.isArray(value.slots),
     });
     return {
