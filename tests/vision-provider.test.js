@@ -7,6 +7,8 @@ import {
   parseJsonText,
   refinementVisionResponseFormat,
   sanitizeJsonText,
+  singleApplicationRootPrompt,
+  singleApplicationVisionResponseFormat,
   usableVisionSlots,
 } from '../server/vision-provider.js';
 
@@ -120,6 +122,30 @@ test('vision surface gate rejects object interiors and degenerate quads', () => 
     quad: goodQuad,
   }] }, 1);
   assert.equal(valid.length, 1);
+});
+
+test('one-step application JSON contract combines target geometry and safe integration', () => {
+  const format = singleApplicationVisionResponseFormat();
+  assert.equal(format.type, 'json_schema');
+  assert.deepEqual(format.json_schema.required, ['summary', 'target', 'integration']);
+  const target = format.json_schema.properties.target;
+  assert.deepEqual(target.required, ['id', 'label', 'confidence', 'quad']);
+  assert.equal(target.properties.quad.minItems, 4);
+  assert.equal(target.properties.quad.maxItems, 4);
+  const integration = format.json_schema.properties.integration;
+  assert.ok(integration.required.includes('preserveLight'));
+  assert.ok(integration.required.includes('brightness'));
+  assert.ok(integration.required.includes('opacity'));
+  assert.ok(integration.required.includes('blend'));
+});
+
+test('rooted application prompt locks brand pixels and delegates only physical integration', () => {
+  const prompt = singleApplicationRootPrompt();
+  assert.match(prompt, /immutable artwork/i);
+  assert.match(prompt, /never rewrite, redraw, recolor/i);
+  assert.match(prompt, /browser will render the original uploaded pixels/i);
+  assert.match(prompt, /perspective/i);
+  assert.match(prompt, /illumination/i);
 });
 
 test('refinement JSON mode contract requires brand-safe integration fields', () => {
