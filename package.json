@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node server/index.js",
-    "check": "node --check studio-app.js && node --check studio-ux.js && node --check studio-universal.js && node --check studio-api-monitor.js && node --check src/studio-core.js && node --check src/studio-flow.js && node --check src/universal-mockup.js && node --check src/scene-brief.js && node --check src/planar-core.js && node --check server/index.js && node --check server/cloudflare-provider.js && node --check server/vision-provider.js && node --check server/openai-provider.js && node --check photo-app.js && node --check scene-builder.js",
+    "check": "node --check studio-app.js && node --check studio-ux.js && node --check studio-enhancements.js && node --check studio-universal.js && node --check studio-api-monitor.js && node --check src/studio-core.js && node --check src/studio-flow.js && node --check src/universal-mockup.js && node --check src/scene-brief.js && node --check src/planar-core.js && node --check server/index.js && node --check server/cloudflare-provider.js && node --check server/mockup-edit-provider.js && node --check server/vision-provider.js && node --check server/openai-provider.js && node --check photo-app.js && node --check scene-builder.js",
     "test": "node --test tests/*.test.js",
     "ci": "npm run check && npm test"
   },
