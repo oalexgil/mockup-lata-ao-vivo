@@ -346,9 +346,22 @@ function ensureUniversalControls() {
   return true;
 }
 
+function waitForLegacyAssetLoad(expected, timeoutMs = 6000) {
+  const started = Date.now();
+  return new Promise((resolve) => {
+    const tick = () => {
+      const match = String($('assetCount')?.textContent || '').match(/(\d+)/);
+      const loaded = match ? Number(match[1]) : 0;
+      if (loaded >= expected || Date.now() - started > timeoutMs) return resolve();
+      setTimeout(tick, 100);
+    };
+    tick();
+  });
+}
+
 function boot() {
   if (!ensureUniversalControls()) return setTimeout(boot, 120);
-  $('brandFiles')?.addEventListener('change', () => {
+  $('brandFiles')?.addEventListener('change', async () => {
     U.slots = [];
     U.mapping = [];
     U.plan = null;
@@ -356,6 +369,12 @@ function boot() {
     overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
     const button = $('finalizeAiBtn');
     if (button) button.disabled = true;
+    const expected = $('brandFiles')?.files?.length || 0;
+    if (expected) {
+      setFlowStatus('Artes carregadas. Preparando identificação automática das áreas…');
+      await waitForLegacyAssetLoad(expected);
+      analyzeLayout();
+    }
   });
   document.addEventListener('mockup:mapping-ready', () => {
     const button = $('finalizeAiBtn');
