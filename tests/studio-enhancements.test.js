@@ -42,6 +42,43 @@ test('old visual versions stay hidden after a new soft-reset session', () => {
   assert.match(enhancements, /index < hiddenVersionCount/);
 });
 
+test('uploaded artworks can be replaced or deleted and the file list is rebuilt', () => {
+  assert.match(enhancements, /function replaceBrandFileList/);
+  assert.match(enhancements, /new DataTransfer\(\)/);
+  assert.match(enhancements, /function deleteBrandFile/);
+  assert.match(enhancements, /function replaceBrandFile/);
+  assert.match(enhancements, /asset-delete/);
+  assert.match(enhancements, /asset-replace/);
+});
+
+test('multiple artworks activate automatic multi-art mapping UX', () => {
+  assert.match(enhancements, /modo multi-art/);
+  assert.match(enhancements, /count > 1/);
+  assert.match(enhancements, /desiredSlots/);
+  assert.match(enhancements, /arquivos originais/);
+  assert.match(enhancements, /mockup:mapping-ready/);
+});
+
+test('export UI supports PNG JPEG and enlarged pixel dimensions', () => {
+  assert.match(enhancements, /id="mockupExportFormat"/);
+  assert.match(enhancements, /value="png">PNG/);
+  assert.match(enhancements, /value="jpeg">JPEG/);
+  assert.match(enhancements, /id="mockupExportScale"/);
+  assert.match(enhancements, /value="2">2× pixels/);
+  assert.match(enhancements, /value="4">4× pixels/);
+  assert.match(enhancements, /id="mockupJpegQuality"/);
+  assert.match(enhancements, /image\/jpeg/);
+  assert.match(enhancements, /image\/png/);
+});
+
+test('high-resolution export composites base and universal overlay with quality resampling', () => {
+  assert.match(enhancements, /function compositeVisibleMockup/);
+  assert.match(enhancements, /imageSmoothingQuality = 'high'/);
+  assert.match(enhancements, /drawImage\(base/);
+  assert.match(enhancements, /drawImage\(overlay/);
+  assert.match(enhancements, /maxDimension = 8192/);
+});
+
 test('direct AI completion is bridged to final workflow state', () => {
   assert.match(enhancements, /mockup:direct-rendered/);
   assert.match(enhancements, /mockup:ai-finalized/);
