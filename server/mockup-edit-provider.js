@@ -1,5 +1,5 @@
 const DEFAULT_EDIT_MODEL = '@cf/black-forest-labs/flux-2-klein-4b';
-const MAX_PROMPT_CHARS = 2200;
+const MAX_PROMPT_CHARS = 2600;
 const MAX_REFERENCE_BYTES = 3 * 1024 * 1024;
 
 function clean(value, max = MAX_PROMPT_CHARS) {
@@ -50,18 +50,64 @@ export function normalizeEditDimensions(width, height) {
   return { width: round64(outWidth), height: round64(outHeight) };
 }
 
-export function buildMockupEditPrompt(instruction = '') {
+export function normalizeFidelityOptions(body = {}) {
+  const requested = clean(body.fidelityMode, 32).toLowerCase();
+  const fidelityMode = ['exact', 'balanced', 'integrated'].includes(requested) ? requested : 'exact';
+  return {
+    fidelityMode,
+    preserveAspectRatio: body.preserveAspectRatio !== false,
+    limitDeformation: body.limitDeformation !== false,
+    safeMargins: body.safeMargins !== false,
+  };
+}
+
+function fidelityInstructions(options) {
+  const common = [
+    'Treat Image 1 as an immutable visual asset, not as inspiration to redraw.',
+    'Preserve the complete internal geometry of Image 1: faces, body proportions, objects, typography, logos, colors, illustration details and relative positions must stay visually unchanged.',
+    'For photographs or portraits, preserve the person identity, facial structure, expression, hair shape, clothing details and body proportions. Never beautify, reconstruct or reinterpret the person.',
+    options.preserveAspectRatio
+      ? 'Preserve the original aspect ratio of Image 1 strictly. Never stretch, squash, widen or narrow the artwork to fill the target.'
+      : 'Keep artwork proportions natural and avoid unnecessary non-uniform scaling.',
+    options.safeMargins
+      ? 'If the target surface has a different aspect ratio, scale the artwork down and leave realistic safe margins rather than cropping or stretching it.'
+      : 'Prefer complete artwork visibility and avoid destructive cropping.',
+    options.limitDeformation
+      ? 'Use only the minimum geometric deformation required by real perspective and surface curvature. Do not warp internal artwork features independently.'
+      : 'Surface conformity may be visible, but internal artwork relationships must remain coherent.',
+  ];
+
+  if (options.fidelityMode === 'exact') {
+    common.push(
+      'FIDELITY PRIORITY: artwork preservation is more important than filling the whole printable surface.',
+      'Apply Image 1 like a rigid printed decal or photographic print attached to the surface. Keep its internal pixels and composition visually stable.',
+      'Use conservative lighting/material integration. Do not repaint the artwork to match the scene; let scene light affect it only subtly and physically.'
+    );
+  } else if (options.fidelityMode === 'balanced') {
+    common.push(
+      'BALANCED PRIORITY: preserve artwork identity and proportions while allowing moderate surface conformity and material integration.'
+    );
+  } else {
+    common.push(
+      'INTEGRATED PRIORITY: allow stronger material and lighting integration, but never rewrite text, logos, faces or the internal artwork composition.'
+    );
+  }
+  return common;
+}
+
+export function buildMockupEditPrompt(instruction = '', optionsInput = {}) {
   const userInstruction = clean(instruction, 1000);
+  const options = normalizeFidelityOptions(optionsInput);
   return [
     'Create the final professional mockup using the two reference images.',
     'Image 0 is the approved mockup scene and must remain the visual base: preserve its product, camera angle, crop, background, lighting, shadows, reflections and composition.',
-    'Image 1 is the uploaded artwork/label and is the source of truth for the brand.',
-    'Apply image 1 to the most appropriate visible exterior printable/display surface in image 0 as a physically realistic mockup.',
-    'Preserve the artwork identity as faithfully as possible: do not translate or intentionally rewrite wording, do not recolor the logo, do not replace the illustration, and do not invent brand elements.',
-    'Only adapt the artwork as required by the photographed surface: perspective, scale, rotation, curvature, material response, scene lighting, shadows, reflections and occlusion.',
+    'Image 1 is the uploaded artwork/label and is the source of truth for the brand and visual content.',
+    'Apply Image 1 to the most appropriate visible exterior printable/display surface in Image 0 as a physically realistic mockup.',
+    ...fidelityInstructions(options),
+    'Do not translate or rewrite wording. Do not invent letters. Do not recolor logos. Do not replace illustrations or photographic subjects. Do not add brand elements that are absent from Image 1.',
     'Do not place the artwork on an opening, interior cavity, handle, background, shadow or unrelated object.',
     'Keep the scene photorealistic and output one finished mockup image, without guides, masks, labels, bounding boxes or annotations.',
-    userInstruction ? `User placement instruction: ${userInstruction}` : 'Choose the primary visible brandable surface automatically.',
+    userInstruction ? `User placement instruction: ${userInstruction}` : 'Choose the primary visible brandable surface automatically and use a centered, commercially plausible placement.',
   ].join(' ');
 }
 
@@ -90,7 +136,8 @@ export async function renderMockupWithAI(body = {}, env = process.env) {
   const scene = parseReferenceDataUrl(body.sceneImageDataUrl);
   const artwork = parseReferenceDataUrl(body.artworkImageDataUrl);
   const dimensions = normalizeEditDimensions(body.outputWidth, body.outputHeight);
-  const prompt = buildMockupEditPrompt(body.instruction);
+  const fidelity = normalizeFidelityOptions(body);
+  const prompt = buildMockupEditPrompt(body.instruction, fidelity);
   const model = mockupEditModel(env);
 
   const form = new FormData();
@@ -127,7 +174,8 @@ export async function renderMockupWithAI(body = {}, env = process.env) {
     model,
     mode: 'direct-ai-edit',
     artworkReferenceUsed: true,
-    fidelity: 'best-effort-generative',
+    fidelity: fidelity.fidelityMode,
+    fidelityControls: fidelity,
     width: dimensions.width,
     height: dimensions.height,
   };
