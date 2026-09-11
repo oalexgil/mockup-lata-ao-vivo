@@ -14,6 +14,10 @@ import {
   analyzeUniversalLayout,
   visionModel,
 } from './vision-provider.js';
+import {
+  mockupEditModel,
+  renderMockupWithAI,
+} from './mockup-edit-provider.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -153,6 +157,11 @@ const server = http.createServer(async (req, res) => {
           openai: state.openai,
         },
         model: state.provider === 'cloudflare' ? cloudflareModel() : null,
+        directMockupEdit: {
+          configured: state.cloudflare,
+          model: state.cloudflare ? mockupEditModel() : null,
+          capabilities: ['two-image-reference-edit', 'single-art-direct-render'],
+        },
         vision: {
           configured: state.cloudflare,
           model: state.cloudflare ? visionModel() : null,
@@ -168,6 +177,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && req.url?.startsWith('/api/generate-scene')) {
       const body = await readJson(req);
       const result = await generateWithConfiguredProvider(body);
+      return sendJson(res, 200, result);
+    }
+
+    if (req.method === 'POST' && req.url?.startsWith('/api/render-mockup')) {
+      const body = await readJson(req);
+      const result = await renderMockupWithAI(body);
       return sendJson(res, 200, result);
     }
 
@@ -206,6 +221,7 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`Mockup Vision Studio em http://localhost:${PORT}`);
   if (state.provider === 'cloudflare') {
     console.log(`Gerador Cloudflare configurado (${cloudflareModel()}).`);
+    console.log(`Editor direto de mockup configurado (${mockupEditModel()}).`);
     console.log(`Visão universal configurada (${visionModel()}).`);
   } else if (state.provider === 'openai') {
     console.log('Gerador OpenAI configurado como fallback.');
