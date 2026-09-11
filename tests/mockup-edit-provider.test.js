@@ -4,6 +4,7 @@ import {
   buildMockupEditPrompt,
   mockupEditModel,
   normalizeEditDimensions,
+  normalizeFidelityOptions,
   parseReferenceDataUrl,
 } from '../server/mockup-edit-provider.js';
 
@@ -25,11 +26,51 @@ test('output dimensions preserve approximate source aspect ratio and stay in mod
   assert.ok(Math.abs((wide.width / wide.height) - (16 / 9)) < 0.15);
 });
 
+test('fidelity controls default to exact and conservative', () => {
+  assert.deepEqual(normalizeFidelityOptions({}), {
+    fidelityMode: 'exact',
+    preserveAspectRatio: true,
+    limitDeformation: true,
+    safeMargins: true,
+  });
+});
+
+test('fidelity options accept balanced mode and explicit opt-outs', () => {
+  assert.deepEqual(normalizeFidelityOptions({
+    fidelityMode: 'balanced',
+    preserveAspectRatio: false,
+    limitDeformation: false,
+    safeMargins: false,
+  }), {
+    fidelityMode: 'balanced',
+    preserveAspectRatio: false,
+    limitDeformation: false,
+    safeMargins: false,
+  });
+});
+
 test('root edit prompt distinguishes scene from immutable brand reference', () => {
   const prompt = buildMockupEditPrompt('apply on the front face');
   assert.match(prompt, /Image 0 is the approved mockup scene/);
   assert.match(prompt, /Image 1 is the uploaded artwork\/label/);
   assert.match(prompt, /source of truth for the brand/);
-  assert.match(prompt, /do not translate or intentionally rewrite wording/);
+  assert.match(prompt, /do not translate or rewrite wording/i);
   assert.match(prompt, /User placement instruction: apply on the front face/);
+});
+
+test('exact fidelity prompt protects portraits proportions and safe margins', () => {
+  const prompt = buildMockupEditPrompt('', {
+    fidelityMode: 'exact',
+    preserveAspectRatio: true,
+    limitDeformation: true,
+    safeMargins: true,
+  });
+  assert.match(prompt, /immutable visual asset/i);
+  assert.match(prompt, /preserve the person identity/i);
+  assert.match(prompt, /original aspect ratio.*strictly/i);
+  assert.match(prompt, /Never stretch, squash, widen or narrow/i);
+  assert.match(prompt, /leave realistic safe margins/i);
+  assert.match(prompt, /minimum geometric deformation/i);
+  assert.match(prompt, /artwork preservation is more important than filling/i);
+  assert.match(prompt, /rigid printed decal/i);
 });
