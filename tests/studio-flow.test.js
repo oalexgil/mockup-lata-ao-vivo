@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   approveScene,
-  autoApplyMessage,
   canApproveScene,
   createFlowState,
   flowStep,
-  markAutoApplied,
+  markAiFinalized,
+  markMappingReady,
   reopenScene,
   setArtworkCount,
   setFineTuneOpen,
@@ -22,40 +22,44 @@ test('scene must exist before approval', () => {
   assert.equal(approveScene(ready).sceneApproved, true);
 });
 
-test('reopening scene revokes approval and automatic application', () => {
-  const approved = markAutoApplied(setArtworkCount(approveScene({ sceneReady: true }), 1));
-  assert.equal(approved.sceneApproved, true);
-  assert.equal(approved.autoApplied, true);
+test('reopening scene revokes mapping and AI finalization', () => {
+  let state = approveScene({ sceneReady: true });
+  state = setArtworkCount(state, 1);
+  state = markMappingReady(state, true);
+  state = markAiFinalized(state);
+  assert.equal(state.aiFinalized, true);
 
-  const reopened = reopenScene(approved);
+  const reopened = reopenScene(state);
   assert.equal(reopened.sceneApproved, false);
-  assert.equal(reopened.autoApplied, false);
+  assert.equal(reopened.mappingReady, false);
+  assert.equal(reopened.aiFinalized, false);
   assert.equal(reopened.fineTuneOpen, false);
 });
 
-test('automatic application requires approved scene and artwork', () => {
-  assert.equal(markAutoApplied({ sceneReady: true, artworkCount: 1 }).autoApplied, false);
-  assert.equal(markAutoApplied({ sceneReady: true, sceneApproved: true, artworkCount: 0 }).autoApplied, false);
-  assert.equal(markAutoApplied({ sceneReady: true, sceneApproved: true, artworkCount: 2 }).autoApplied, true);
+test('mapping requires approved scene and at least one artwork', () => {
+  assert.equal(markMappingReady({ sceneReady: true, artworkCount: 1 }, true).mappingReady, false);
+  assert.equal(markMappingReady({ sceneReady: true, sceneApproved: true, artworkCount: 0 }, true).mappingReady, false);
+  assert.equal(markMappingReady({ sceneReady: true, sceneApproved: true, artworkCount: 2 }, true).mappingReady, true);
 });
 
-test('fine tuning only opens after automatic application', () => {
+test('AI finalization requires mapping', () => {
   const approved = createFlowState({ sceneReady: true, sceneApproved: true, artworkCount: 1 });
-  assert.equal(setFineTuneOpen(approved, true).fineTuneOpen, false);
-
-  const applied = markAutoApplied(approved);
-  assert.equal(setFineTuneOpen(applied, true).fineTuneOpen, true);
+  assert.equal(markAiFinalized(approved).aiFinalized, false);
+  const mapped = markMappingReady(approved, true);
+  assert.equal(markAiFinalized(mapped).aiFinalized, true);
 });
 
-test('flow advances through brief, scene, artworks and final mockup', () => {
+test('fine tuning only opens after AI finalization', () => {
+  const mapped = markMappingReady({ sceneReady: true, sceneApproved: true, artworkCount: 1 }, true);
+  assert.equal(setFineTuneOpen(mapped, true).fineTuneOpen, false);
+  const finished = markAiFinalized(mapped);
+  assert.equal(setFineTuneOpen(finished, true).fineTuneOpen, true);
+});
+
+test('flow advances through brief, approval, artwork and mapping', () => {
   assert.equal(flowStep({}), 1);
   assert.equal(flowStep({ sceneReady: true }), 2);
   assert.equal(flowStep({ sceneReady: true, sceneApproved: true }), 3);
   assert.equal(flowStep({ sceneReady: true, sceneApproved: true, artworkCount: 1 }), 4);
-});
-
-test('auto apply summary explains mismatch between artworks and slots', () => {
-  assert.match(autoApplyMessage(1, 1), /1 arte/);
-  assert.match(autoApplyMessage(2, 4), /2 área/);
-  assert.match(autoApplyMessage(4, 2), /2 arte/);
+  assert.equal(flowStep({ sceneReady: true, sceneApproved: true, artworkCount: 1, mappingReady: true }), 5);
 });
