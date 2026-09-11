@@ -1,0 +1,13 @@
+{
+  "name": "Mockup Vision",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-24-bookworm",
+  "forwardPorts": [8000],
+  "portsAttributes": {
+    "8000": {
+      "label": "Mockup Vision",
+      "onAutoForward": "openBrowser",
+      "visibility": "private"
+    }
+  },
+  "postStartCommand": "bash -lc 'if ! curl -fsS http://127.0.0.1:8000/api/health >/dev/null 2>&1; then nohup npm run dev >/tmp/mockup-vision.log 2>&1 & fi'"
+}
