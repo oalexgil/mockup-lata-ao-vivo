@@ -2,9 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ARTWORK_FIDELITY_POLICY,
+  isUsableMockupSlot,
+  isValidNormalizedQuad,
   mapArtworksToSlots,
   normalizeRefinementPlan,
   normalizeUniversalSlots,
+  quadArea,
   quadToPixels,
 } from '../src/universal-mockup.js';
 
@@ -33,6 +36,37 @@ test('universal slots clamp normalized coordinates and preserve order', () => {
     { x: 0.2, y: 1 },
   ]);
   assert.equal(slots[0].confidence, 1);
+});
+
+test('degenerate or non-finite quadrilaterals are rejected before rendering', () => {
+  assert.equal(isValidNormalizedQuad([
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+  ]), false);
+  assert.equal(isValidNormalizedQuad([
+    { x: Number.NaN, y: 0.2 },
+    { x: 0.8, y: 0.2 },
+    { x: 0.8, y: 0.8 },
+    { x: 0.2, y: 0.8 },
+  ]), false);
+  assert.equal(normalizeUniversalSlots({ slots: [{
+    label: 'bad',
+    quad: [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }],
+  }] }).length, 0);
+});
+
+test('usable surface rejects interior cavities while keeping printable exterior faces', () => {
+  const quad = [
+    { x: 0.3, y: 0.25 },
+    { x: 0.7, y: 0.25 },
+    { x: 0.68, y: 0.75 },
+    { x: 0.32, y: 0.75 },
+  ];
+  assert.ok(quadArea(quad) > 0.1);
+  assert.equal(isUsableMockupSlot({ label: 'Cup interior', confidence: 0.9, quad }), false);
+  assert.equal(isUsableMockupSlot({ label: 'front printable surface', confidence: 0.9, quad }), true);
 });
 
 test('artworks map one-to-one without mutating source assets', () => {
