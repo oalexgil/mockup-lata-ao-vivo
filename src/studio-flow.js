@@ -3,42 +3,70 @@ export function createFlowState(input = {}) {
     sceneReady: Boolean(input.sceneReady),
     sceneApproved: Boolean(input.sceneApproved),
     artworkCount: Math.max(0, Number(input.artworkCount) || 0),
-    autoApplied: Boolean(input.autoApplied),
+    mappingReady: Boolean(input.mappingReady),
+    aiFinalized: Boolean(input.aiFinalized),
     fineTuneOpen: Boolean(input.fineTuneOpen),
   };
 }
 
 export function canApproveScene(state = {}) {
-  return Boolean(state.sceneReady) && !state.sceneApproved;
+  const s = createFlowState(state);
+  return s.sceneReady && !s.sceneApproved;
 }
 
 export function approveScene(state = {}) {
   const next = createFlowState(state);
   if (!next.sceneReady) return next;
-  return { ...next, sceneApproved: true, autoApplied: false, fineTuneOpen: false };
-}
-
-export function reopenScene(state = {}) {
-  return { ...createFlowState(state), sceneApproved: false, autoApplied: false, fineTuneOpen: false };
-}
-
-export function setArtworkCount(state = {}, count = 0) {
   return {
-    ...createFlowState(state),
-    artworkCount: Math.max(0, Number(count) || 0),
-    autoApplied: false,
+    ...next,
+    sceneApproved: true,
+    mappingReady: false,
+    aiFinalized: false,
+    fineTuneOpen: false,
   };
 }
 
-export function markAutoApplied(state = {}) {
+export function reopenScene(state = {}) {
+  return {
+    ...createFlowState(state),
+    sceneApproved: false,
+    mappingReady: false,
+    aiFinalized: false,
+    fineTuneOpen: false,
+  };
+}
+
+export function setArtworkCount(state = {}, count = 0) {
+  const next = createFlowState(state);
+  return {
+    ...next,
+    artworkCount: Math.max(0, Number(count) || 0),
+    mappingReady: false,
+    aiFinalized: false,
+    fineTuneOpen: false,
+  };
+}
+
+export function markMappingReady(state = {}, ready = true) {
   const next = createFlowState(state);
   if (!next.sceneApproved || !next.artworkCount) return next;
-  return { ...next, autoApplied: true };
+  return {
+    ...next,
+    mappingReady: Boolean(ready),
+    aiFinalized: ready ? false : next.aiFinalized,
+    fineTuneOpen: false,
+  };
+}
+
+export function markAiFinalized(state = {}) {
+  const next = createFlowState(state);
+  if (!next.sceneApproved || !next.artworkCount || !next.mappingReady) return next;
+  return { ...next, aiFinalized: true };
 }
 
 export function setFineTuneOpen(state = {}, open = true) {
   const next = createFlowState(state);
-  return { ...next, fineTuneOpen: Boolean(open) && next.autoApplied };
+  return { ...next, fineTuneOpen: Boolean(open) && next.aiFinalized };
 }
 
 export function flowStep(state = {}) {
@@ -46,15 +74,6 @@ export function flowStep(state = {}) {
   if (!s.sceneReady) return 1;
   if (!s.sceneApproved) return 2;
   if (!s.artworkCount) return 3;
-  return 4;
-}
-
-export function autoApplyMessage(artworkCount, slotCount) {
-  const arts = Math.max(0, Number(artworkCount) || 0);
-  const slots = Math.max(0, Number(slotCount) || 0);
-  if (!arts) return 'Envie pelo menos uma arte.';
-  if (!slots) return 'Nenhuma área foi detectada; usando a área inicial como fallback.';
-  if (arts === slots) return `${arts} arte(s) distribuída(s) em ${slots} área(s).`;
-  if (arts < slots) return `${arts} arte(s) aplicada(s). Há ${slots - arts} área(s) adicional(is) para ajuste opcional.`;
-  return `${slots} área(s) preenchida(s). ${arts - slots} arte(s) ficaram sem área e podem ser atribuídas nos ajustes finos.`;
+  if (!s.mappingReady) return 4;
+  return 5;
 }
