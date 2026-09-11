@@ -1,4 +1,8 @@
-import { normalizeRefinementPlan, normalizeUniversalSlots } from '../src/universal-mockup.js';
+import {
+  isUsableMockupSlot,
+  normalizeRefinementPlan,
+  normalizeUniversalSlots,
+} from '../src/universal-mockup.js';
 
 const VISION_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
 const STRICT_JSON_REMINDER = 'Return only valid JSON. Do not include markdown. Do not include explanations. Do not include code fences.';
@@ -7,8 +11,8 @@ let agreementPromise = null;
 const POINT_SCHEMA = {
   type: 'object',
   properties: {
-    x: { type: 'number' },
-    y: { type: 'number' },
+    x: { type: 'number', minimum: 0, maximum: 1 },
+    y: { type: 'number', minimum: 0, maximum: 1 },
   },
   required: ['x', 'y'],
 };
@@ -23,7 +27,7 @@ const LAYOUT_JSON_SCHEMA = {
         properties: {
           id: { type: 'string' },
           label: { type: 'string' },
-          confidence: { type: 'number' },
+          confidence: { type: 'number', minimum: 0, maximum: 1 },
           quad: {
             type: 'array',
             minItems: 4,
@@ -224,7 +228,9 @@ export function jsonResponseFormat(schema) {
 async function requestStructuredVision({ image, prompt, system, env, label, validate, schema }) {
   let lastError = null;
   for (let attempt = 1; attempt <= 2; attempt += 1) {
-    const retryReminder = attempt === 2 ? `\n\n${STRICT_JSON_REMINDER}` : '';
+    const retryReminder = attempt === 2
+      ? `\n\n${STRICT_JSON_REMINDER} The previous candidate was rejected. Return a different, clearly usable exterior/display/print surface with a non-degenerate quadrilateral.`
+      : '';
     try {
       const payload = await postModel({
         messages: [
@@ -241,7 +247,7 @@ async function requestStructuredVision({ image, prompt, system, env, label, vali
       const parsed = structured || parseJsonText(raw);
 
       if (validate && !validate(parsed)) {
-        throw new Error('A resposta JSON não respeitou o schema esperado.');
+        throw new Error('A resposta JSON não contém uma superfície imprimível geometricamente válida.');
       }
       logVisionAttempt(label, attempt, raw, sanitized);
       return parsed;
@@ -289,23 +295,27 @@ export function refinementVisionResponseFormat() {
   return jsonResponseFormat(REFINEMENT_JSON_SCHEMA);
 }
 
+export function usableVisionSlots(value, requested = 8) {
+  return normalizeUniversalSlots(value, requested).filter(isUsableMockupSlot);
+}
+
 export async function analyzeUniversalLayout(body = {}, env = process.env) {
   await ensureAgreement(env);
   const image = imageValue(body.imageDataUrl);
   const requested = Math.max(1, Math.min(8, Number(body.desiredSlots || body.artworkCount || 1) || 1));
-  const prompt = `Analyze this mockup image and identify ${requested} clean visual surface(s) where uploaded artwork can realistically be placed. Work generically: do not assume cup, bottle, poster, screen, box or any particular object type. Return JSON only using this exact schema: {"slots":[{"id":"1","label":"short surface description","confidence":0.0,"quad":[{"x":0.0,"y":0.0},{"x":0.0,"y":0.0},{"x":0.0,"y":0.0},{"x":0.0,"y":0.0}]}]}. Coordinates must be normalized from 0 to 1, ordered top-left, top-right, bottom-right, bottom-left. Choose the actual printable/display surface, not the full detected object bounding box. Prefer visible, unobstructed surfaces and preserve perspective. If fewer than ${requested} reliable surfaces exist, return only the reliable ones. ${STRICT_JSON_REMINDER}`;
+  const prompt = `Analyze this mockup image and identify ${requested} clean visual surface(s) where uploaded artwork can realistically be placed. Work generically: do not assume cup, bottle, poster, screen, box or any particular object type. Return JSON only using this exact schema: {"slots":[{"id":"1","label":"short surface description","confidence":0.0,"quad":[{"x":0.0,"y":0.0},{"x":0.0,"y":0.0},{"x":0.0,"y":0.0},{"x":0.0,"y":0.0}]}]}. Coordinates must be normalized from 0 to 1, ordered top-left, top-right, bottom-right, bottom-left. Select the actual exterior printable/display face where a flat artwork should visibly appear. Never select an interior cavity, opening, rim, handle, hole, background, shadow, negative space, or the full object bounding box. For a curved object, choose the central visible exterior printable region and approximate that usable region with four well-separated points inside its visible boundaries. The quadrilateral must have meaningful width and height and must not collapse to a line or point. Prefer visible, unobstructed surfaces and preserve perspective. If fewer than ${requested} reliable surfaces exist, return only the reliable ones. ${STRICT_JSON_REMINDER}`;
 
   try {
     const parsed = await requestStructuredVision({
       image,
       prompt,
-      system: 'You are a precise visual geometry assistant for professional mockups.',
+      system: 'You are a precise visual geometry assistant for professional mockups. Detect only surfaces where artwork can actually be rendered and seen.',
       env,
       label: 'layout',
       schema: LAYOUT_JSON_SCHEMA,
-      validate: (value) => normalizeUniversalSlots(value, requested).length > 0,
+      validate: (value) => usableVisionSlots(value, requested).length > 0,
     });
-    const slots = normalizeUniversalSlots(parsed, requested);
+    const slots = usableVisionSlots(parsed, requested);
     return {
       slots,
       mappingStatus: 'validated',
@@ -319,7 +329,7 @@ export async function analyzeUniversalLayout(body = {}, env = process.env) {
       slots: createUniversalFallbackSlots(),
       mappingStatus: 'fallback',
       surfaceValidated: false,
-      warning: 'A IA não conseguiu validar a superfície. Revise ou tente novamente.',
+      warning: 'A IA não encontrou uma superfície imprimível válida. Revise ou tente novamente.',
       diagnostic: clean(error?.message, 240),
       provider: 'universal-fallback',
       model: VISION_MODEL,
