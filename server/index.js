@@ -6,6 +6,7 @@ import { generateScene as generateOpenAIScene } from './openai-provider.js';
 import {
   cloudflareConfigured,
   cloudflareModel,
+  cloudflareReferenceModel,
   generateScene as generateCloudflareScene,
 } from './cloudflare-provider.js';
 import {
@@ -110,6 +111,7 @@ function injectStudioHelpers(filePath, data) {
     '<script src="studio-api-monitor.js"></script>',
     '<script type="module" src="studio-ux.js"></script>',
     '<script type="module" src="studio-enhancements.js"></script>',
+    '<script type="module" src="studio-reference-support.js"></script>',
     '<script type="module" src="studio-universal.js"></script>',
   ];
   for (const script of scripts) {
@@ -158,6 +160,11 @@ const server = http.createServer(async (req, res) => {
           openai: state.openai,
         },
         model: state.provider === 'cloudflare' ? cloudflareModel() : null,
+        sceneReferences: {
+          configured: state.cloudflare,
+          model: state.cloudflare ? cloudflareReferenceModel() : null,
+          maxImages: 4,
+        },
         directMockupEdit: {
           configured: state.cloudflare,
           model: state.cloudflare ? mockupEditModel() : null,
@@ -228,6 +235,7 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`Mockup Vision Studio em http://localhost:${PORT}`);
   if (state.provider === 'cloudflare') {
     console.log(`Gerador Cloudflare configurado (${cloudflareModel()}).`);
+    console.log(`Gerador com referências configurado (${cloudflareReferenceModel()}).`);
     console.log(`Editor direto de mockup configurado (${mockupEditModel()}).`);
     console.log(`Visão universal configurada (${visionModel()}).`);
   } else if (state.provider === 'openai') {
