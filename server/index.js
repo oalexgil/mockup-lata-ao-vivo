@@ -109,6 +109,7 @@ function injectStudioHelpers(filePath, data) {
   const scripts = [
     '<script src="studio-api-monitor.js"></script>',
     '<script type="module" src="studio-ux.js"></script>',
+    '<script type="module" src="studio-enhancements.js"></script>',
     '<script type="module" src="studio-universal.js"></script>',
   ];
   for (const script of scripts) {
@@ -160,7 +161,13 @@ const server = http.createServer(async (req, res) => {
         directMockupEdit: {
           configured: state.cloudflare,
           model: state.cloudflare ? mockupEditModel() : null,
-          capabilities: ['two-image-reference-edit', 'single-art-direct-render'],
+          capabilities: [
+            'two-image-reference-edit',
+            'single-art-direct-render',
+            'fidelity-profiles',
+            'aspect-ratio-preservation',
+            'deformation-limits',
+          ],
         },
         vision: {
           configured: state.cloudflare,
