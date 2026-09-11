@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildCloudflarePayload,
   cloudflareConfigured,
   cloudflareModel,
   extractCloudflareImage,
@@ -14,7 +15,7 @@ test('validates Cloudflare Workers AI model ids', () => {
   assert.equal(isValidCloudflareModel('../../bad'), false);
 });
 
-test('sanitizes prompt, steps and seed', () => {
+test('sanitizes prompt, steps and seed metadata', () => {
   const previous = process.env.CLOUDFLARE_IMAGE_STEPS;
   process.env.CLOUDFLARE_IMAGE_STEPS = '99';
   const result = sanitizeCloudflareRequest({ prompt: '  mockup limpo  ', seed: 42 });
@@ -23,6 +24,13 @@ test('sanitizes prompt, steps and seed', () => {
   assert.equal(result.seed, 42);
   if (previous === undefined) delete process.env.CLOUDFLARE_IMAGE_STEPS;
   else process.env.CLOUDFLARE_IMAGE_STEPS = previous;
+});
+
+test('omits seed from FLUX.1 Schnell REST payload', () => {
+  const request = { prompt: 'mockup limpo', steps: 4, seed: 42 };
+  const payload = buildCloudflarePayload(request, '@cf/black-forest-labs/flux-1-schnell');
+  assert.deepEqual(payload, { prompt: 'mockup limpo', steps: 4 });
+  assert.equal('seed' in payload, false);
 });
 
 test('detects configuration without exposing secrets', () => {
