@@ -1,6 +1,7 @@
 import { normalizeRefinementPlan, normalizeUniversalSlots } from '../src/universal-mockup.js';
 
 const VISION_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
+const STRICT_JSON_REMINDER = 'Return only valid JSON. Do not include markdown. Do not include explanations. Do not include code fences.';
 let agreementPromise = null;
 
 function clean(value, max = 16000) {
@@ -67,16 +68,100 @@ function extractText(payload) {
   return clean(value, 24000);
 }
 
-function parseJsonText(text) {
-  const raw = clean(text, 24000);
-  if (!raw) throw new Error('A análise visual não retornou conteúdo.');
-  try { return JSON.parse(raw); }
-  catch {
-    const first = raw.indexOf('{');
-    const last = raw.lastIndexOf('}');
-    if (first >= 0 && last > first) return JSON.parse(raw.slice(first, last + 1));
-    throw new Error('A análise visual retornou JSON inválido.');
+function firstBalancedObject(text) {
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (start < 0) {
+      if (char === '{') {
+        start = index;
+        depth = 1;
+      }
+      continue;
+    }
+
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+    if (char === '{') depth += 1;
+    if (char === '}') {
+      depth -= 1;
+      if (depth === 0) return text.slice(start, index + 1);
+    }
   }
+  return '';
+}
+
+export function sanitizeJsonText(text) {
+  const raw = clean(text, 24000)
+    .replace(/^\uFEFF/, '')
+    .replace(/```(?:json|javascript|js)?/gi, '')
+    .replace(/```/g, '')
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/\u00a0/g, ' ')
+    .trim();
+  const candidate = firstBalancedObject(raw) || raw;
+  return candidate.replace(/,\s*([}\]])/g, '$1').trim();
+}
+
+export function parseJsonText(text) {
+  const sanitized = sanitizeJsonText(text);
+  if (!sanitized) throw new Error('A análise visual não retornou conteúdo.');
+  try {
+    return JSON.parse(sanitized);
+  } catch (cause) {
+    const error = new Error('A análise visual retornou JSON inválido.');
+    error.cause = cause;
+    error.sanitized = sanitized;
+    throw error;
+  }
+}
+
+function logVisionAttempt(label, attempt, raw, sanitized, error = null) {
+  console.info(`[vision:${label}] resposta bruta tentativa ${attempt}:`, raw || '(vazia)');
+  console.info(`[vision:${label}] resposta sanitizada tentativa ${attempt}:`, sanitized || '(vazia)');
+  if (error) console.warn(`[vision:${label}] erro de parse tentativa ${attempt}:`, error);
+}
+
+async function requestStructuredVision({ image, prompt, system, env, label, validate }) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const retryReminder = attempt === 2 ? `\n\n${STRICT_JSON_REMINDER}` : '';
+    const payload = await postModel({
+      messages: [
+        { role: 'system', content: `${system} ${STRICT_JSON_REMINDER}` },
+        { role: 'user', content: `${prompt}${retryReminder}` },
+      ],
+      image,
+    }, env);
+    const raw = extractText(payload);
+    const sanitized = sanitizeJsonText(raw);
+    try {
+      const parsed = parseJsonText(raw);
+      if (validate && !validate(parsed)) {
+        throw new Error('A resposta JSON não respeitou o schema esperado.');
+      }
+      logVisionAttempt(label, attempt, raw, sanitized);
+      return parsed;
+    } catch (error) {
+      lastError = error;
+      logVisionAttempt(label, attempt, raw, sanitized, error);
+    }
+  }
+  throw lastError || new Error('A análise visual não retornou JSON válido.');
 }
 
 function imageValue(imageDataUrl) {
@@ -89,44 +174,90 @@ function imageValue(imageDataUrl) {
   return value;
 }
 
+export function createUniversalFallbackSlots() {
+  return normalizeUniversalSlots({
+    slots: [{
+      id: 'fallback-1',
+      label: 'Área provisória — revisão manual necessária',
+      confidence: 0.1,
+      quad: [
+        { x: 0.2, y: 0.2 },
+        { x: 0.8, y: 0.2 },
+        { x: 0.8, y: 0.8 },
+        { x: 0.2, y: 0.8 },
+      ],
+    }],
+  }, 1);
+}
+
 export async function analyzeUniversalLayout(body = {}, env = process.env) {
   await ensureAgreement(env);
   const image = imageValue(body.imageDataUrl);
   const requested = Math.max(1, Math.min(8, Number(body.desiredSlots || body.artworkCount || 1) || 1));
-  const prompt = `Analyze this mockup image and identify ${requested} clean visual surface(s) where uploaded artwork can realistically be placed. Work generically: do not assume cup, bottle, poster, screen, box or any particular object type. Return JSON only using this schema: {"slots":[{"id":"1","label":"short surface description","confidence":0.0,"quad":[{"x":0.0,"y":0.0},{"x":0.0,"y":0.0},{"x":0.0,"y":0.0},{"x":0.0,"y":0.0}]}]}. Coordinates must be normalized from 0 to 1, ordered top-left, top-right, bottom-right, bottom-left. Choose the actual printable/display surface, not the full detected object bounding box. Prefer visible, unobstructed surfaces and preserve perspective. If fewer than ${requested} reliable surfaces exist, return only the reliable ones.`;
-  const payload = await postModel({
-    messages: [
-      { role: 'system', content: 'You are a precise visual geometry assistant for professional mockups. Return strict JSON only.' },
-      { role: 'user', content: prompt },
-    ],
-    image,
-  }, env);
-  const parsed = parseJsonText(extractText(payload));
-  return {
-    slots: normalizeUniversalSlots(parsed, requested),
-    provider: 'cloudflare-vision',
-    model: VISION_MODEL,
-  };
+  const prompt = `Analyze this mockup image and identify ${requested} clean visual surface(s) where uploaded artwork can realistically be placed. Work generically: do not assume cup, bottle, poster, screen, box or any particular object type. Return JSON only using this exact schema: {"slots":[{"id":"1","label":"short surface description","confidence":0.0,"quad":[{"x":0.0,"y":0.0},{"x":0.0,"y":0.0},{"x":0.0,"y":0.0},{"x":0.0,"y":0.0}]}]}. Coordinates must be normalized from 0 to 1, ordered top-left, top-right, bottom-right, bottom-left. Choose the actual printable/display surface, not the full detected object bounding box. Prefer visible, unobstructed surfaces and preserve perspective. If fewer than ${requested} reliable surfaces exist, return only the reliable ones. ${STRICT_JSON_REMINDER}`;
+
+  try {
+    const parsed = await requestStructuredVision({
+      image,
+      prompt,
+      system: 'You are a precise visual geometry assistant for professional mockups.',
+      env,
+      label: 'layout',
+      validate: (value) => normalizeUniversalSlots(value, requested).length > 0,
+    });
+    const slots = normalizeUniversalSlots(parsed, requested);
+    return {
+      slots,
+      mappingStatus: 'validated',
+      surfaceValidated: true,
+      provider: 'cloudflare-vision',
+      model: VISION_MODEL,
+    };
+  } catch (error) {
+    console.warn('[vision:layout] duas tentativas falharam; usando fallback universal revisável.', error);
+    return {
+      slots: createUniversalFallbackSlots(),
+      mappingStatus: 'fallback',
+      surfaceValidated: false,
+      warning: 'A IA não conseguiu validar a superfície. Revise ou tente novamente.',
+      diagnostic: clean(error?.message, 240),
+      provider: 'universal-fallback',
+      model: VISION_MODEL,
+    };
+  }
 }
 
 export async function analyzeRefinement(body = {}, env = process.env) {
   await ensureAgreement(env);
   const image = imageValue(body.imageDataUrl);
   const slotCount = Math.max(1, Math.min(8, Number(body.slotCount || 1) || 1));
-  const prompt = `Review this mockup composition with ${slotCount} numbered artwork slot(s). The uploaded artwork is immutable brand content: never change letters, wording, colors, logos, drawings, illustrations, or internal composition. You may only recommend non-destructive integration settings for perspective-aware placement: lighting preservation, brightness, contrast, saturation, opacity and blend mode. Return JSON only: {"summary":"short note","slots":[{"index":1,"preserveLight":0.58,"brightness":1.0,"contrast":1.0,"saturation":1.0,"opacity":1.0,"blend":"source-over","note":"short surface note"}]}. Use conservative values. Allowed blend: source-over, multiply, overlay, soft-light. Never suggest content edits.`;
-  const payload = await postModel({
-    messages: [
-      { role: 'system', content: 'You are a mockup finishing assistant. Brand artwork content is locked and immutable. Return strict JSON only.' },
-      { role: 'user', content: prompt },
-    ],
-    image,
-  }, env);
-  const parsed = parseJsonText(extractText(payload));
-  return {
-    ...normalizeRefinementPlan(parsed, slotCount),
-    provider: 'cloudflare-vision',
-    model: VISION_MODEL,
-  };
+  const prompt = `Review this mockup composition with ${slotCount} numbered artwork slot(s). The uploaded artwork is immutable brand content: never change letters, wording, colors, logos, drawings, illustrations, or internal composition. You may only recommend non-destructive integration settings for perspective-aware placement: lighting preservation, brightness, contrast, saturation, opacity and blend mode. Return JSON only using this exact schema: {"summary":"short note","slots":[{"index":1,"preserveLight":0.58,"brightness":1.0,"contrast":1.0,"saturation":1.0,"opacity":1.0,"blend":"source-over","note":"short surface note"}]}. Use conservative values. Allowed blend: source-over, multiply, overlay, soft-light. Never suggest content edits. ${STRICT_JSON_REMINDER}`;
+
+  try {
+    const parsed = await requestStructuredVision({
+      image,
+      prompt,
+      system: 'You are a mockup finishing assistant. Brand artwork content is locked and immutable.',
+      env,
+      label: 'refinement',
+      validate: (value) => value && typeof value === 'object' && Array.isArray(value.slots),
+    });
+    return {
+      ...normalizeRefinementPlan(parsed, slotCount),
+      refinementStatus: 'validated',
+      provider: 'cloudflare-vision',
+      model: VISION_MODEL,
+    };
+  } catch (error) {
+    console.warn('[vision:refinement] duas tentativas falharam; usando plano conservador local.', error);
+    return {
+      ...normalizeRefinementPlan({}, slotCount),
+      refinementStatus: 'fallback',
+      warning: 'A IA não retornou um plano válido; foram mantidos ajustes conservadores locais.',
+      provider: 'local-safe-fallback',
+      model: VISION_MODEL,
+    };
+  }
 }
 
 export const visionModel = () => VISION_MODEL;
