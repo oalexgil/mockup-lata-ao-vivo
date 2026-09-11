@@ -112,6 +112,7 @@ function injectStudioHelpers(filePath, data) {
     '<script type="module" src="studio-ux.js"></script>',
     '<script type="module" src="studio-enhancements.js"></script>',
     '<script type="module" src="studio-reference-support.js"></script>',
+    '<script type="module" src="studio-fidelity-guard.js"></script>',
     '<script type="module" src="studio-universal.js"></script>',
   ];
   for (const script of scripts) {
@@ -174,6 +175,8 @@ const server = http.createServer(async (req, res) => {
             'fidelity-profiles',
             'aspect-ratio-preservation',
             'deformation-limits',
+            'deterministic-exact-guard',
+            'original-pixel-rendering',
           ],
         },
         vision: {
