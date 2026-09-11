@@ -66,6 +66,9 @@ function fidelityInstructions(options) {
     'Treat Image 1 as an immutable visual asset, not as inspiration to redraw.',
     'Preserve the complete internal geometry of Image 1: faces, body proportions, objects, typography, logos, colors, illustration details and relative positions must stay visually unchanged.',
     'For photographs or portraits, preserve the person identity, facial structure, expression, hair shape, clothing details and body proportions. Never beautify, reconstruct or reinterpret the person.',
+    'If Image 1 contains readable text, headlines, editorial layout, signage, institutional graphics or a logo, treat all typography and letterforms as rigid semantic content. Preserve exact wording, line breaks, hierarchy, baseline relationships and relative spacing.',
+    'Never bend individual letters, curve text baselines aggressively, stretch a word to fill a curved surface, or locally warp typography. Apply only one coherent global perspective/surface transform to the complete artwork.',
+    'For text-heavy artwork on curved or strongly distorted surfaces, prefer a smaller inset placement with safe margins over edge-to-edge coverage. Legibility and semantic fidelity are more important than filling the target.',
     options.preserveAspectRatio
       ? 'Preserve the original aspect ratio of Image 1 strictly. Never stretch, squash, widen or narrow the artwork to fill the target.'
       : 'Keep artwork proportions natural and avoid unnecessary non-uniform scaling.',
