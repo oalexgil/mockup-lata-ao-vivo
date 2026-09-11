@@ -33,6 +33,22 @@ export function sanitizeCloudflareRequest(body = {}) {
   };
 }
 
+export function buildCloudflarePayload(request, model) {
+  const payload = {
+    prompt: request.prompt,
+    steps: request.steps,
+  };
+
+  // The current REST schema used by FLUX.1 Schnell rejects `seed` even
+  // though some Workers AI examples/bindings document it. Keep the seed
+  // locally for version metadata, but do not send it to this endpoint.
+  if (model !== DEFAULT_MODEL && process.env.CLOUDFLARE_SEND_SEED === '1') {
+    payload.seed = request.seed;
+  }
+
+  return payload;
+}
+
 export function extractCloudflareImage(payload) {
   return payload?.result?.image || payload?.image || null;
 }
@@ -75,11 +91,7 @@ export async function generateScene(body, env = process.env) {
       Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      prompt: request.prompt,
-      steps: request.steps,
-      seed: request.seed,
-    }),
+    body: JSON.stringify(buildCloudflarePayload(request, model)),
   });
 
   const text = await response.text();
