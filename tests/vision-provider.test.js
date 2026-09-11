@@ -7,6 +7,7 @@ import {
   parseJsonText,
   refinementVisionResponseFormat,
   sanitizeJsonText,
+  usableVisionSlots,
 } from '../server/vision-provider.js';
 
 test('vision parser accepts fenced JSON with prose around it', () => {
@@ -72,14 +73,53 @@ test('Cloudflare JSON mode structured response is accepted without text parsing'
   assert.equal(parsed.slots[0].confidence, 0.94);
 });
 
-test('layout JSON mode contract requires slots and four coordinate points', () => {
+test('layout JSON mode contract requires bounded normalized coordinates', () => {
   const format = layoutVisionResponseFormat();
   assert.equal(format.type, 'json_schema');
   assert.deepEqual(format.json_schema.required, ['slots']);
-  const quad = format.json_schema.properties.slots.items.properties.quad;
+  const item = format.json_schema.properties.slots.items;
+  const quad = item.properties.quad;
   assert.equal(quad.minItems, 4);
   assert.equal(quad.maxItems, 4);
   assert.deepEqual(quad.items.required, ['x', 'y']);
+  assert.equal(quad.items.properties.x.minimum, 0);
+  assert.equal(quad.items.properties.x.maximum, 1);
+  assert.equal(quad.items.properties.y.minimum, 0);
+  assert.equal(quad.items.properties.y.maximum, 1);
+  assert.equal(item.properties.confidence.minimum, 0);
+  assert.equal(item.properties.confidence.maximum, 1);
+});
+
+test('vision surface gate rejects object interiors and degenerate quads', () => {
+  const goodQuad = [
+    { x: 0.3, y: 0.25 },
+    { x: 0.7, y: 0.25 },
+    { x: 0.68, y: 0.75 },
+    { x: 0.32, y: 0.75 },
+  ];
+  const interior = usableVisionSlots({ slots: [{
+    id: '1',
+    label: 'Cup interior',
+    confidence: 0.95,
+    quad: goodQuad,
+  }] }, 1);
+  assert.equal(interior.length, 0);
+
+  const degenerate = usableVisionSlots({ slots: [{
+    id: '1',
+    label: 'front printable surface',
+    confidence: 0.95,
+    quad: [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }],
+  }] }, 1);
+  assert.equal(degenerate.length, 0);
+
+  const valid = usableVisionSlots({ slots: [{
+    id: '1',
+    label: 'front printable surface',
+    confidence: 0.95,
+    quad: goodQuad,
+  }] }, 1);
+  assert.equal(valid.length, 1);
 });
 
 test('refinement JSON mode contract requires brand-safe integration fields', () => {
