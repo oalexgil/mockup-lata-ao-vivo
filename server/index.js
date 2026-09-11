@@ -8,6 +8,11 @@ import {
   cloudflareModel,
   generateScene as generateCloudflareScene,
 } from './cloudflare-provider.js';
+import {
+  analyzeRefinement,
+  analyzeUniversalLayout,
+  visionModel,
+} from './vision-provider.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -99,6 +104,7 @@ function injectStudioHelpers(filePath, data) {
   const scripts = [
     '<script src="studio-api-monitor.js"></script>',
     '<script type="module" src="studio-ux.js"></script>',
+    '<script type="module" src="studio-universal.js"></script>',
   ];
   for (const script of scripts) {
     const src = script.match(/src="([^"]+)"/)?.[1];
@@ -146,12 +152,29 @@ const server = http.createServer(async (req, res) => {
           openai: state.openai,
         },
         model: state.provider === 'cloudflare' ? cloudflareModel() : null,
+        vision: {
+          configured: state.cloudflare,
+          model: state.cloudflare ? visionModel() : null,
+          capabilities: ['generic-slot-detection', 'brand-safe-refinement-plan'],
+        },
       });
     }
 
     if (req.method === 'POST' && req.url?.startsWith('/api/generate-scene')) {
       const body = await readJson(req);
       const result = await generateWithConfiguredProvider(body);
+      return sendJson(res, 200, result);
+    }
+
+    if (req.method === 'POST' && req.url?.startsWith('/api/analyze-layout')) {
+      const body = await readJson(req);
+      const result = await analyzeUniversalLayout(body);
+      return sendJson(res, 200, result);
+    }
+
+    if (req.method === 'POST' && req.url?.startsWith('/api/refine-plan')) {
+      const body = await readJson(req);
+      const result = await analyzeRefinement(body);
       return sendJson(res, 200, result);
     }
 
@@ -172,6 +195,7 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`Mockup Vision Studio em http://localhost:${PORT}`);
   if (state.provider === 'cloudflare') {
     console.log(`Gerador Cloudflare configurado (${cloudflareModel()}).`);
+    console.log(`Visão universal configurada (${visionModel()}).`);
   } else if (state.provider === 'openai') {
     console.log('Gerador OpenAI configurado como fallback.');
   } else {
