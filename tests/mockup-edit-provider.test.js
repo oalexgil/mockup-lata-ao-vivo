@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildMockupEditPrompt,
+  explicitPlacementInstructions,
   mockupEditModel,
   normalizeEditDimensions,
   normalizeFidelityOptions,
@@ -99,6 +100,8 @@ test('integrated mode strengthens material integration without authorizing stron
   assert.match(prompt, /flexible fabric, canvas, apparel or a tote bag/i);
   assert.match(prompt, /stable central printable region/i);
   assert.match(prompt, /do not shear, widen, narrow/i);
+  assert.match(prompt, /broad scene luminance, subtle cloth texture and low-amplitude fold shading/i);
+  assert.match(prompt, /do not solve realism by warping the artwork more/i);
   assert.match(prompt, /never stronger artwork deformation/i);
   assert.match(prompt, /does NOT mean stretching, squashing/i);
 });
@@ -119,5 +122,20 @@ test('explicit apparel instruction makes garment region a valid requested target
   });
   assert.match(prompt, /APPAREL INTENT/i);
   assert.match(prompt, /requested garment or fabric region is an intentional valid target/i);
+  assert.match(prompt, /SHIRT PRINT REGION/i);
   assert.match(prompt, /avoid stretching it into seams, hems, sleeves/i);
+});
+
+test('placement parser converts collar distance and centering into explicit geometry constraints', () => {
+  const instructions = explicitPlacementInstructions('Afaste a imagem 7 centímetros da gola da camisa e centralize');
+  const prompt = instructions.join(' ');
+  assert.match(prompt, /approximately 7 centimeters below the visible collar\/neckline/i);
+  assert.match(prompt, /real-world visual spacing constraint/i);
+  assert.match(prompt, /center the artwork horizontally/i);
+  assert.match(prompt, /stable printable region/i);
+});
+
+test('left chest placement stays inside the requested shirt region', () => {
+  const instructions = explicitPlacementInstructions('Aplicar no peito esquerdo da camiseta');
+  assert.match(instructions.join(' '), /wearer's left-chest print region/i);
 });
