@@ -61,6 +61,28 @@ export function normalizeFidelityOptions(body = {}) {
   };
 }
 
+function explicitTargetInstructions(userInstruction) {
+  if (!userInstruction) return [];
+  const instructions = [
+    'The user placement instruction has priority for TARGET SELECTION. If it names a visible surface, object, garment region or body region, place the artwork on that requested target and do not silently substitute another surface merely because it is easier to render.',
+    'If the requested target is not actually visible or physically usable, preserve the scene and do not relocate the artwork to an unrelated object or region.',
+  ];
+
+  if (/\b(tattoo|tatuagem|skin|pele|arm|bra[cç]o|forearm|antebra[cç]o|shoulder|ombro|leg|perna|back|costas)\b/i.test(userInstruction)) {
+    instructions.push(
+      'TATTOO INTENT: human skin is an intentional valid target. Integrate the artwork like real ink following the local body perspective and subtle skin curvature, while preserving the artwork identity and avoiding arbitrary redraw.'
+    );
+  }
+
+  if (/\b(shirt|t-?shirt|tee|camisa|camiseta|hoodie|moletom|dress|vestido|apparel|garment|roupa|fabric|tecido)\b/i.test(userInstruction)) {
+    instructions.push(
+      'APPAREL INTENT: the requested garment or fabric region is an intentional valid target. Follow the garment perspective and broad folds, but keep the artwork proportions coherent and avoid stretching it into seams, hems, sleeves or unrelated fabric regions unless the user explicitly requests those areas.'
+    );
+  }
+
+  return instructions;
+}
+
 function fidelityInstructions(options) {
   const common = [
     'Treat Image 1 as an immutable visual asset, not as inspiration to redraw.',
@@ -69,6 +91,8 @@ function fidelityInstructions(options) {
     'If Image 1 contains readable text, headlines, editorial layout, signage, institutional graphics or a logo, treat all typography and letterforms as rigid semantic content. Preserve exact wording, line breaks, hierarchy, baseline relationships and relative spacing.',
     'Never bend individual letters, curve text baselines aggressively, stretch a word to fill a curved surface, or locally warp typography. Apply only one coherent global perspective/surface transform to the complete artwork.',
     'For text-heavy artwork on curved or strongly distorted surfaces, prefer a smaller inset placement with safe margins over edge-to-edge coverage. Legibility and semantic fidelity are more important than filling the target.',
+    'When the selected target is flexible fabric, canvas, apparel or a tote bag, use the stable central printable region. Avoid forcing the artwork into seams, hems, handles, edge tension zones or deep folds unless the user explicitly asks for that region.',
+    'On flexible surfaces, material integration may follow broad surface perspective and soft folds, but do not shear, widen, narrow or independently distort internal artwork features. Prefer a slightly smaller print over visible geometry damage.',
     options.preserveAspectRatio
       ? 'Preserve the original aspect ratio of Image 1 strictly. Never stretch, squash, widen or narrow the artwork to fill the target.'
       : 'Keep artwork proportions natural and avoid unnecessary non-uniform scaling.',
@@ -77,7 +101,7 @@ function fidelityInstructions(options) {
       : 'Prefer complete artwork visibility and avoid destructive cropping.',
     options.limitDeformation
       ? 'Use only the minimum geometric deformation required by real perspective and surface curvature. Do not warp internal artwork features independently.'
-      : 'Surface conformity may be visible, but internal artwork relationships must remain coherent.',
+      : 'Surface conformity may be visible, but it must remain one coherent physical transform. Never use stronger integration as permission to distort the artwork proportions or internal geometry.',
   ];
 
   if (options.fidelityMode === 'exact') {
@@ -92,7 +116,8 @@ function fidelityInstructions(options) {
     );
   } else {
     common.push(
-      'INTEGRATED PRIORITY: allow stronger material and lighting integration, but never rewrite text, logos, faces or the internal artwork composition.'
+      'INTEGRATED PRIORITY: allow stronger material, texture, lighting, shadow and physically plausible occlusion integration, but never stronger artwork deformation.',
+      'Stronger integration means the artwork belongs to the material; it does NOT mean stretching, squashing, re-composing or re-rendering the artwork.'
     );
   }
   return common;
@@ -105,11 +130,12 @@ export function buildMockupEditPrompt(instruction = '', optionsInput = {}) {
     'Create the final professional mockup using the two reference images.',
     'Image 0 is the approved mockup scene and must remain the visual base: preserve its product, camera angle, crop, background, lighting, shadows, reflections and composition.',
     'Image 1 is the uploaded artwork/label and is the source of truth for the brand and visual content.',
-    'Apply Image 1 to the most appropriate visible exterior printable/display surface in Image 0 as a physically realistic mockup.',
+    'Apply Image 1 to the most appropriate visible surface in Image 0 as a physically realistic mockup, while honoring any explicit user target instruction.',
+    ...explicitTargetInstructions(userInstruction),
     ...fidelityInstructions(options),
     'Artwork fidelity rule: do not translate or intentionally rewrite wording. Do not translate or rewrite wording in any way. Do not invent letters. Do not recolor logos. Do not replace illustrations or photographic subjects. Do not add brand elements that are absent from Image 1.',
     'Allowed physical adaptation is limited to perspective, scale, rotation, curvature, material response, scene lighting, shadows, reflections and physically necessary occlusion.',
-    'Do not place the artwork on an opening, interior cavity, handle, background, shadow or unrelated object.',
+    'Do not place the artwork on an opening, interior cavity, handle, background, shadow or unrelated object. A garment or body region is NOT unrelated when the user explicitly requests it.',
     'Keep the scene photorealistic and output one finished mockup image, without guides, masks, labels, bounding boxes or annotations.',
     userInstruction ? `User placement instruction: ${userInstruction}` : 'Choose the primary visible brandable surface automatically and use a centered, commercially plausible placement.',
   ].join(' ');
@@ -161,8 +187,8 @@ export async function renderMockupWithAI(body = {}, env = process.env) {
 
   const text = await response.text();
   let payload = {};
-  try { payload = text ? JSON.parse(text) : {}; }
-  catch { payload = { raw: text }; }
+  try { payload = text ? JSON.parse(text) : {};
+  } catch { payload = { raw: text }; }
   if (!response.ok || payload?.success === false) throw cloudflareError(payload, response.status);
 
   const base64 = extractImage(payload);

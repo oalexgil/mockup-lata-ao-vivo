@@ -88,3 +88,36 @@ test('edit prompt treats typography as rigid semantic content and prefers legibi
   assert.match(prompt, /smaller inset placement with safe margins/i);
   assert.match(prompt, /Legibility and semantic fidelity are more important than filling/i);
 });
+
+test('integrated mode strengthens material integration without authorizing stronger artwork deformation', () => {
+  const prompt = buildMockupEditPrompt('', {
+    fidelityMode: 'integrated',
+    preserveAspectRatio: true,
+    limitDeformation: false,
+    safeMargins: true,
+  });
+  assert.match(prompt, /flexible fabric, canvas, apparel or a tote bag/i);
+  assert.match(prompt, /stable central printable region/i);
+  assert.match(prompt, /do not shear, widen, narrow/i);
+  assert.match(prompt, /never stronger artwork deformation/i);
+  assert.match(prompt, /does NOT mean stretching, squashing/i);
+});
+
+test('explicit tattoo instruction makes skin an intentional valid target', () => {
+  const prompt = buildMockupEditPrompt('Aplique esse desenho no braço direito como uma tatuagem', {
+    fidelityMode: 'balanced',
+  });
+  assert.match(prompt, /priority for TARGET SELECTION/i);
+  assert.match(prompt, /TATTOO INTENT/i);
+  assert.match(prompt, /human skin is an intentional valid target/i);
+  assert.match(prompt, /do not silently substitute another surface/i);
+});
+
+test('explicit apparel instruction makes garment region a valid requested target', () => {
+  const prompt = buildMockupEditPrompt('Aplique a arte no peito da camiseta', {
+    fidelityMode: 'balanced',
+  });
+  assert.match(prompt, /APPAREL INTENT/i);
+  assert.match(prompt, /requested garment or fabric region is an intentional valid target/i);
+  assert.match(prompt, /avoid stretching it into seams, hems, sleeves/i);
+});
