@@ -61,11 +61,49 @@ export function normalizeFidelityOptions(body = {}) {
   };
 }
 
+export function explicitPlacementInstructions(userInstruction = '') {
+  const text = clean(userInstruction, 1000);
+  if (!text) return [];
+
+  const instructions = [];
+  const centimeters = text.match(/(\d+(?:[.,]\d+)?)\s*(?:cm\b|cent[ií]metros?\b)/i);
+  const mentionsCollar = /\b(gola|decote|collar|neckline)\b/i.test(text);
+  const centered = /\b(centraliz(?:e|ar|ado|ada)|centrali[sz](?:e|ed)|center(?:ed)?|centre(?:d)?)\b/i.test(text);
+  const leftChest = /(?:\b(peito|chest)\b.{0,28}\b(esquerd[oa]?|left)\b)|(?:\b(esquerd[oa]?|left)\b.{0,28}\b(peito|chest)\b)/i.test(text);
+  const rightChest = /(?:\b(peito|chest)\b.{0,28}\b(direit[oa]?|right)\b)|(?:\b(direit[oa]?|right)\b.{0,28}\b(peito|chest)\b)/i.test(text);
+
+  if (centimeters && mentionsCollar) {
+    const cm = centimeters[1].replace(',', '.');
+    instructions.push(
+      `PLACEMENT GEOMETRY: keep the top edge of the artwork approximately ${cm} centimeters below the visible collar/neckline. Treat the measurement as a real-world visual spacing constraint relative to the garment scale, not as permission to resize or distort the artwork.`
+    );
+  }
+
+  if (centered) {
+    instructions.push(
+      'ALIGNMENT: center the artwork horizontally inside the stable printable region of the requested target. Keep visual spacing balanced on both sides.'
+    );
+  }
+
+  if (leftChest) {
+    instructions.push(
+      'CHEST POSITION: use the wearer\'s left-chest print region, below the collar and inside the torso panel, without drifting toward the sleeve or centerline.'
+    );
+  } else if (rightChest) {
+    instructions.push(
+      'CHEST POSITION: use the wearer\'s right-chest print region, below the collar and inside the torso panel, without drifting toward the sleeve or centerline.'
+    );
+  }
+
+  return instructions;
+}
+
 function explicitTargetInstructions(userInstruction) {
   if (!userInstruction) return [];
   const instructions = [
     'The user placement instruction has priority for TARGET SELECTION. If it names a visible surface, object, garment region or body region, place the artwork on that requested target and do not silently substitute another surface merely because it is easier to render.',
     'If the requested target is not actually visible or physically usable, preserve the scene and do not relocate the artwork to an unrelated object or region.',
+    ...explicitPlacementInstructions(userInstruction),
   ];
 
   if (/\b(tattoo|tatuagem|skin|pele|arm|bra[cç]o|forearm|antebra[cç]o|shoulder|ombro|leg|perna|back|costas)\b/i.test(userInstruction)) {
@@ -76,7 +114,8 @@ function explicitTargetInstructions(userInstruction) {
 
   if (/\b(shirt|t-?shirt|tee|camisa|camiseta|hoodie|moletom|dress|vestido|apparel|garment|roupa|fabric|tecido)\b/i.test(userInstruction)) {
     instructions.push(
-      'APPAREL INTENT: the requested garment or fabric region is an intentional valid target. Follow the garment perspective and broad folds, but keep the artwork proportions coherent and avoid stretching it into seams, hems, sleeves or unrelated fabric regions unless the user explicitly requests those areas.'
+      'APPAREL INTENT: the requested garment or fabric region is an intentional valid target. Follow the garment perspective and broad folds, but keep the artwork proportions coherent and avoid stretching it into seams, hems, sleeves or unrelated fabric regions unless the user explicitly requests those areas.',
+      'SHIRT PRINT REGION: when the target is the front torso of a shirt, keep the artwork fully inside the stable chest panel: visibly below the neckline, clear of sleeve seams and side seams, and above the lower torso/waist transition unless the user requests otherwise.'
     );
   }
 
@@ -93,6 +132,8 @@ function fidelityInstructions(options) {
     'For text-heavy artwork on curved or strongly distorted surfaces, prefer a smaller inset placement with safe margins over edge-to-edge coverage. Legibility and semantic fidelity are more important than filling the target.',
     'When the selected target is flexible fabric, canvas, apparel or a tote bag, use the stable central printable region. Avoid forcing the artwork into seams, hems, handles, edge tension zones or deep folds unless the user explicitly asks for that region.',
     'On flexible surfaces, material integration may follow broad surface perspective and soft folds, but do not shear, widen, narrow or independently distort internal artwork features. Prefer a slightly smaller print over visible geometry damage.',
+    'For fabric realism, transfer broad scene luminance, subtle cloth texture and low-amplitude fold shading onto the artwork without chasing every wrinkle. The artwork may inherit light and material response, but its overall silhouette, aspect ratio and internal geometry must stay stable.',
+    'Avoid a pasted-on sticker look by matching local brightness, contrast and fabric texture at low strength. Do not solve realism by warping the artwork more.',
     options.preserveAspectRatio
       ? 'Preserve the original aspect ratio of Image 1 strictly. Never stretch, squash, widen or narrow the artwork to fill the target.'
       : 'Keep artwork proportions natural and avoid unnecessary non-uniform scaling.',
