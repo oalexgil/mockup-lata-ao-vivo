@@ -51,9 +51,11 @@
     return response;
   };
 
-  import('./studio-guided-workflow.js').catch((error) => {
-    console.warn('[guided-workflow] falha ao carregar o fluxo guiado.', error);
-  });
+  import('./studio-guided-hotfix.js')
+    .then(() => import('./studio-guided-workflow.js'))
+    .catch((error) => {
+      console.warn('[guided-workflow] falha ao carregar o fluxo guiado.', error);
+    });
   import('./studio-product-polish.js').catch((error) => {
     console.warn('[product-polish] falha ao carregar o acabamento da interface.', error);
   });
