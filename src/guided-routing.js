@@ -3,7 +3,19 @@ import {
   normalizeGuidedMapping,
 } from './guided-multi-art.js';
 
-const clean = (value, max = 600) => String(value || '').trim().replace(/\s+/g, ' ').slice(0, max);
+const clean = (value, max = 600) => String(value || '')
+  .normalize('NFKC')
+  .trim()
+  .replace(/\s+/g, ' ')
+  .slice(0, max);
+
+function normalizeRoutingText(value = '') {
+  return String(value || '')
+    .normalize('NFKC')
+    .replace(/[：﹕]/g, ':')
+    .replace(/[‐‑‒–—―]/g, '-')
+    .replace(/\r\n?/g, '\n');
+}
 
 function targetIndex(value, artworkCount) {
   const numeric = Number(value);
@@ -14,12 +26,13 @@ function targetIndex(value, artworkCount) {
 }
 
 function parseIndexedLine(line, artworkCount) {
-  const source = String(line || '').trim();
+  const source = normalizeRoutingText(line).trim();
   if (!source) return null;
   const patterns = [
-    /^(?:arte|artwork|pe[cç]a)\s*#?0*(\d{1,2})\s*(?::|=>|→|—|–|-)\s*(.+)$/i,
-    /^(?:arte|artwork|pe[cç]a)\s*#?0*(\d{1,2})\s+(.+)$/i,
-    /^#?0*(\d{1,2})\s*(?::|=>|→|—|–|-)\s*(.+)$/i,
+    /^(?:arte|artwork|pe[cç]a)\s*#?\s*0*(\d{1,3})\s*(?::|=|=>|->|→|-)\s*(.+)$/i,
+    /^(?:arte|artwork|pe[cç]a)\s*#?\s*0*(\d{1,3})\s*[.)]\s*(.+)$/i,
+    /^(?:arte|artwork|pe[cç]a)\s*#?\s*0*(\d{1,3})\s+(.+)$/i,
+    /^#?\s*0*(\d{1,3})\s*(?::|=|=>|->|→|-)\s*(.+)$/i,
   ];
   for (const pattern of patterns) {
     const match = source.match(pattern);
@@ -32,14 +45,25 @@ function parseIndexedLine(line, artworkCount) {
   return null;
 }
 
+function parseInlineTargets(raw, artworkCount, targets) {
+  const source = normalizeRoutingText(raw);
+  const marker = /(?:^|\n|;)\s*(?:arte|artwork|pe[cç]a)\s*#?\s*0*(\d{1,3})\s*(?::|=|=>|->|→|-)\s*([^\n;]+)/gim;
+  let match;
+  while ((match = marker.exec(source))) {
+    const index = targetIndex(match[1], artworkCount);
+    const destination = clean(match[2]);
+    if (index != null && destination) targets.set(index, destination);
+  }
+}
+
 export function parseArtworkTargetPlan(value = '', artworkCount = 0) {
-  const raw = String(value || '').trim();
+  const raw = normalizeRoutingText(value).trim();
   const targets = new Map();
   const generalLines = [];
   if (!raw) return { targets, general: '', explicit: false };
 
   const lines = raw
-    .split(/\r?\n|;/)
+    .split(/\n|;/)
     .map((line) => line.trim())
     .filter(Boolean);
 
@@ -49,9 +73,17 @@ export function parseArtworkTargetPlan(value = '', artworkCount = 0) {
     else generalLines.push(line);
   }
 
+  // Recovery pass for copy/paste from rich text, mobile keyboards or punctuation
+  // variants that may not survive line-by-line parsing exactly as typed.
+  parseInlineTargets(raw, artworkCount, targets);
+
+  const general = clean(generalLines
+    .filter((line) => !parseIndexedLine(line, artworkCount))
+    .join(' '), 600);
+
   return {
     targets,
-    general: clean(generalLines.join(' '), 600),
+    general,
     explicit: targets.size > 0,
   };
 }
