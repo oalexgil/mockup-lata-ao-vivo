@@ -1,0 +1,141 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  buildMockupEditPrompt,
+  explicitPlacementInstructions,
+  mockupEditModel,
+  normalizeEditDimensions,
+  normalizeFidelityOptions,
+  parseReferenceDataUrl,
+} from '../server/mockup-edit-provider.js';
+
+test('direct editor defaults to Cloudflare FLUX.2 klein multi-reference model', () => {
+  assert.equal(mockupEditModel({}), '@cf/black-forest-labs/flux-2-klein-4b');
+});
+
+test('reference data URL parser accepts png and rejects non-image input', () => {
+  const parsed = parseReferenceDataUrl('data:image/png;base64,aGVsbG8=');
+  assert.equal(parsed.mime, 'image/png');
+  assert.equal(parsed.buffer.toString('utf8'), 'hello');
+  assert.throws(() => parseReferenceDataUrl('data:text/plain;base64,aGVsbG8='), /Referência de imagem inválida/);
+});
+
+test('output dimensions preserve approximate source aspect ratio and stay in model bounds', () => {
+  const wide = normalizeEditDimensions(1600, 900);
+  assert.ok(wide.width >= wide.height);
+  assert.ok(wide.width <= 1920 && wide.height >= 256);
+  assert.ok(Math.abs((wide.width / wide.height) - (16 / 9)) < 0.15);
+});
+
+test('fidelity controls default to exact and conservative', () => {
+  assert.deepEqual(normalizeFidelityOptions({}), {
+    fidelityMode: 'exact',
+    preserveAspectRatio: true,
+    limitDeformation: true,
+    safeMargins: true,
+  });
+});
+
+test('fidelity options accept balanced mode and explicit opt-outs', () => {
+  assert.deepEqual(normalizeFidelityOptions({
+    fidelityMode: 'balanced',
+    preserveAspectRatio: false,
+    limitDeformation: false,
+    safeMargins: false,
+  }), {
+    fidelityMode: 'balanced',
+    preserveAspectRatio: false,
+    limitDeformation: false,
+    safeMargins: false,
+  });
+});
+
+test('root edit prompt distinguishes scene from immutable brand reference', () => {
+  const prompt = buildMockupEditPrompt('apply on the front face');
+  assert.match(prompt, /Image 0 is the approved mockup scene/);
+  assert.match(prompt, /Image 1 is the uploaded artwork\/label/);
+  assert.match(prompt, /source of truth for the brand/);
+  assert.match(prompt, /do not translate or rewrite wording/i);
+  assert.match(prompt, /User placement instruction: apply on the front face/);
+});
+
+test('exact fidelity prompt protects portraits proportions and safe margins', () => {
+  const prompt = buildMockupEditPrompt('', {
+    fidelityMode: 'exact',
+    preserveAspectRatio: true,
+    limitDeformation: true,
+    safeMargins: true,
+  });
+  assert.match(prompt, /immutable visual asset/i);
+  assert.match(prompt, /preserve the person identity/i);
+  assert.match(prompt, /original aspect ratio.*strictly/i);
+  assert.match(prompt, /Never stretch, squash, widen or narrow/i);
+  assert.match(prompt, /leave realistic safe margins/i);
+  assert.match(prompt, /minimum geometric deformation/i);
+  assert.match(prompt, /artwork preservation is more important than filling/i);
+  assert.match(prompt, /rigid printed decal/i);
+});
+
+test('edit prompt treats typography as rigid semantic content and prefers legibility over curved fill', () => {
+  const prompt = buildMockupEditPrompt('', {
+    fidelityMode: 'balanced',
+    preserveAspectRatio: true,
+    limitDeformation: true,
+    safeMargins: true,
+  });
+  assert.match(prompt, /typography and letterforms as rigid semantic content/i);
+  assert.match(prompt, /Preserve exact wording, line breaks, hierarchy, baseline relationships and relative spacing/i);
+  assert.match(prompt, /Never bend individual letters/i);
+  assert.match(prompt, /smaller inset placement with safe margins/i);
+  assert.match(prompt, /Legibility and semantic fidelity are more important than filling/i);
+});
+
+test('integrated mode strengthens material integration without authorizing stronger artwork deformation', () => {
+  const prompt = buildMockupEditPrompt('', {
+    fidelityMode: 'integrated',
+    preserveAspectRatio: true,
+    limitDeformation: false,
+    safeMargins: true,
+  });
+  assert.match(prompt, /flexible fabric, canvas, apparel or a tote bag/i);
+  assert.match(prompt, /stable central printable region/i);
+  assert.match(prompt, /do not shear, widen, narrow/i);
+  assert.match(prompt, /broad scene luminance, subtle cloth texture and low-amplitude fold shading/i);
+  assert.match(prompt, /do not solve realism by warping the artwork more/i);
+  assert.match(prompt, /never stronger artwork deformation/i);
+  assert.match(prompt, /does NOT mean stretching, squashing/i);
+});
+
+test('explicit tattoo instruction makes skin an intentional valid target', () => {
+  const prompt = buildMockupEditPrompt('Aplique esse desenho no braço direito como uma tatuagem', {
+    fidelityMode: 'balanced',
+  });
+  assert.match(prompt, /priority for TARGET SELECTION/i);
+  assert.match(prompt, /TATTOO INTENT/i);
+  assert.match(prompt, /human skin is an intentional valid target/i);
+  assert.match(prompt, /do not silently substitute another surface/i);
+});
+
+test('explicit apparel instruction makes garment region a valid requested target', () => {
+  const prompt = buildMockupEditPrompt('Aplique a arte no peito da camiseta', {
+    fidelityMode: 'balanced',
+  });
+  assert.match(prompt, /APPAREL INTENT/i);
+  assert.match(prompt, /requested garment or fabric region is an intentional valid target/i);
+  assert.match(prompt, /SHIRT PRINT REGION/i);
+  assert.match(prompt, /avoid stretching it into seams, hems, sleeves/i);
+});
+
+test('placement parser converts collar distance and centering into explicit geometry constraints', () => {
+  const instructions = explicitPlacementInstructions('Afaste a imagem 7 centímetros da gola da camisa e centralize');
+  const prompt = instructions.join(' ');
+  assert.match(prompt, /approximately 7 centimeters below the visible collar\/neckline/i);
+  assert.match(prompt, /real-world visual spacing constraint/i);
+  assert.match(prompt, /center the artwork horizontally/i);
+  assert.match(prompt, /stable printable region/i);
+});
+
+test('left chest placement stays inside the requested shirt region', () => {
+  const instructions = explicitPlacementInstructions('Aplicar no peito esquerdo da camiseta');
+  assert.match(instructions.join(' '), /wearer's left-chest print region/i);
+});
