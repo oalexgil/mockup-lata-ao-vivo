@@ -12,9 +12,9 @@ import {
 import {
   analyzeRefinement,
   analyzeSingleApplication,
-  analyzeUniversalLayout,
   visionModel,
 } from './vision-provider.js';
+import { analyzeUniversalLayout } from './layout-provider.js';
 import {
   mockupEditModel,
   renderMockupWithAI,
@@ -185,6 +185,9 @@ const server = http.createServer(async (req, res) => {
           capabilities: [
             'single-art-application-plan',
             'generic-slot-detection',
+            'whole-composition-surface-inventory',
+            'duplicate-surface-rejection',
+            'multi-surface-candidate-recovery',
             'brand-safe-refinement-plan',
           ],
         },
