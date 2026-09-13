@@ -9,6 +9,10 @@ import {
   usableVisionSlots,
   visionModel,
 } from './vision-provider.js';
+import {
+  normalizeFocusPoint,
+  rankSlotsByFocus,
+} from '../src/assisted-surface.js';
 
 const MAX_SLOTS = 8;
 const MAX_IMAGE_CHARS = 24 * 1024 * 1024;
@@ -26,6 +30,12 @@ function requestedCount(body = {}) {
 function candidateLimit(count) {
   const normalized = Math.max(1, Math.min(MAX_SLOTS, Number(count) || 1));
   return Math.min(MAX_SLOTS, normalized + 2);
+}
+
+function normalizeFocusRadius(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0.28;
+  return Math.max(0.08, Math.min(0.55, numeric));
 }
 
 function normalizeExcludedSlots(value = []) {
@@ -61,7 +71,6 @@ async function postVision(payload, env = process.env) {
     error.statusCode = 503;
     throw error;
   }
-
   const response = await fetch(modelUrl(env), {
     method: 'POST',
     headers: {
@@ -74,12 +83,9 @@ async function postVision(payload, env = process.env) {
   let json = {};
   try { json = text ? JSON.parse(text) : {}; }
   catch { json = { raw: text }; }
-
   if (!response.ok || json?.success === false) {
     const message = (json?.errors || []).map((item) => item?.message).filter(Boolean).join(' | ')
-      || json?.error?.message
-      || json?.message
-      || `Cloudflare Vision ${response.status}`;
+      || json?.error?.message || json?.message || `Cloudflare Vision ${response.status}`;
     const error = new Error(message);
     error.statusCode = response.status >= 500 ? 502 : response.status;
     error.responseBody = clean(text, 4000);
@@ -99,12 +105,7 @@ async function ensureAgreement(env = process.env) {
 }
 
 function extractText(payload) {
-  const candidates = [
-    payload?.result?.response,
-    payload?.result?.text,
-    payload?.response,
-    payload?.result,
-  ];
+  const candidates = [payload?.result?.response, payload?.result?.text, payload?.response, payload?.result];
   return clean(candidates.find((item) => typeof item === 'string'), 24000);
 }
 
@@ -114,12 +115,7 @@ function slotBounds(slot) {
   const xs = quad.map((point) => Number(point.x));
   const ys = quad.map((point) => Number(point.y));
   if (xs.some((value) => !Number.isFinite(value)) || ys.some((value) => !Number.isFinite(value))) return null;
-  return {
-    left: Math.min(...xs),
-    top: Math.min(...ys),
-    right: Math.max(...xs),
-    bottom: Math.max(...ys),
-  };
+  return { left: Math.min(...xs), top: Math.min(...ys), right: Math.max(...xs), bottom: Math.max(...ys) };
 }
 
 export function surfaceOverlap(a, b) {
@@ -154,20 +150,22 @@ export function rejectReservedSurfaces(slots = [], excludedSlots = [], overlapTh
   return slots.filter((slot) => !reserved.some((excluded) => surfaceOverlap(slot, excluded) >= overlapThreshold));
 }
 
-export function selectSurfaceCandidates(value, requested = 1, excludedSlots = []) {
+export function selectSurfaceCandidates(value, requested = 1, excludedSlots = [], focusPoint = null, focusRadius = 0.28) {
   const count = Math.max(1, Math.min(MAX_SLOTS, Number(requested) || 1));
   const usable = usableVisionSlots(value, MAX_SLOTS);
   const unreserved = rejectReservedSurfaces(usable, excludedSlots);
   const distinct = distinctSurfaceCandidates(unreserved);
-  const strongest = distinct
-    .sort((a, b) => Number(b?.confidence || 0) - Number(a?.confidence || 0))
-    .slice(0, count);
-  return sortVisionSlots(strongest);
+  const focus = normalizeFocusPoint(focusPoint);
+  const ranked = focus
+    ? rankSlotsByFocus(distinct, focus, normalizeFocusRadius(focusRadius))
+    : distinct.sort((a, b) => Number(b?.confidence || 0) - Number(a?.confidence || 0));
+  const strongest = ranked.slice(0, count);
+  return focus ? strongest : sortVisionSlots(strongest);
 }
 
-export function hasSurfaceCoverage(value, requested = 1, excludedSlots = []) {
+export function hasSurfaceCoverage(value, requested = 1, excludedSlots = [], focusPoint = null, focusRadius = 0.28) {
   const count = Math.max(1, Math.min(MAX_SLOTS, Number(requested) || 1));
-  return selectSurfaceCandidates(value, count, excludedSlots).length >= count;
+  return selectSurfaceCandidates(value, count, excludedSlots, focusPoint, focusRadius).length >= count;
 }
 
 export function universalLayoutSchema(requested = 1) {
@@ -184,7 +182,14 @@ function reservedPrompt(excludedSlots = []) {
   return ` RESERVED SURFACES: ${JSON.stringify(coordinates)}. These normalized quadrilaterals are already approved or currently occupied. Do NOT return them again, do not substantially overlap them, and continue searching for different real surfaces elsewhere in the composition.`;
 }
 
-export function universalLayoutPrompt(requested = 1, excludedSlots = [], targetInstruction = '') {
+function focusPrompt(focusPoint = null, focusRadius = 0.28) {
+  const focus = normalizeFocusPoint(focusPoint);
+  if (!focus) return '';
+  const radius = normalizeFocusRadius(focusRadius);
+  return ` USER CLICK FOCUS: normalized point ${JSON.stringify(focus)} with local search radius approximately ${radius.toFixed(2)}. This click is a strong spatial constraint. Prefer a real usable surface that CONTAINS the clicked point. If the point falls just beside an edge, select the nearest plausible surface within that local radius. Ignore unrelated large or central surfaces farther away. Do not expand the result into a full-object box merely to include the click.`;
+}
+
+export function universalLayoutPrompt(requested = 1, excludedSlots = [], targetInstruction = '', focusPoint = null, focusRadius = 0.28) {
   const count = Math.max(1, Math.min(MAX_SLOTS, Number(requested) || 1));
   const limit = candidateLimit(count);
   const multi = count > 1
@@ -192,51 +197,48 @@ export function universalLayoutPrompt(requested = 1, excludedSlots = [], targetI
     : `Find the strongest NEXT usable target surface. You may return up to ${limit} candidates so validation can reject a previously reserved area and still keep a valid alternative.`;
   const userIntent = clean(targetInstruction, 600);
   const intentPrompt = userIntent ? ` USER TARGET INTENT: ${JSON.stringify(userIntent)}. Treat this explicit instruction as the highest-priority semantic target, while still requiring a real visible surface and valid geometry.` : '';
-
-  return `Analyze this mockup scene and identify ${count} clean visual surface(s) where uploaded artwork can realistically be placed. ${multi}${reservedPrompt(excludedSlots)}${intentPrompt} A usable target is a bounded physical region intended or plausible for receiving 2D visual content. Examples include display areas, printed panels, package faces, cards, signs, covers, pages, posters, labels, boards, garment print regions and other brandable faces; these examples are illustrative, NOT a whitelist. Work from what is actually visible and do not assume any product category. For framed or electronic displays, select the active content area inside the bezel/frame, not the whole device. For packaging or rigid products, select the visible face itself. For flexible material, use a stable printable region rather than seams, edges or deep folds. For curved surfaces, use the central visible region and approximate its perspective with four well-separated points. Return JSON only as {"slots":[{"id":"1","label":"short surface description","confidence":0.0,"quad":[{"x":0.0,"y":0.0},{"x":0.0,"y":0.0},{"x":0.0,"y":0.0},{"x":0.0,"y":0.0}]}]}. Coordinates are normalized 0..1 in top-left, top-right, bottom-right, bottom-left order. Never select an interior cavity, opening, rim, handle, hole, background, shadow, negative space or full-object bounding box. Do not return duplicate or strongly overlapping slots. If fewer than ${count} real usable surfaces exist, return only the real ones instead of inventing fake targets. ${STRICT_JSON_REMINDER}`;
+  return `Analyze this mockup scene and identify ${count} clean visual surface(s) where uploaded artwork can realistically be placed. ${multi}${reservedPrompt(excludedSlots)}${intentPrompt}${focusPrompt(focusPoint, focusRadius)} A usable target is a bounded physical region intended or plausible for receiving 2D visual content. Examples include display areas, printed panels, package faces, cards, signs, covers, pages, posters, labels, boards, garment print regions and other brandable faces; these examples are illustrative, NOT a whitelist. Work from what is actually visible and do not assume any product category. For framed or electronic displays, select the active content area inside the bezel/frame, not the whole device. For packaging or rigid products, select the visible face itself. For flexible material, use a stable printable region rather than seams, edges or deep folds. For curved surfaces, use the central visible region and approximate its perspective with four well-separated points. Return JSON only as {"slots":[{"id":"1","label":"short surface description","confidence":0.0,"quad":[{"x":0.0,"y":0.0},{"x":0.0,"y":0.0},{"x":0.0,"y":0.0},{"x":0.0,"y":0.0}]}]}. Coordinates are normalized 0..1 in top-left, top-right, bottom-right, bottom-left order. Never select an interior cavity, opening, rim, handle, hole, background, shadow, negative space or full-object bounding box. Do not return duplicate or strongly overlapping slots. If fewer than ${count} real usable surfaces exist, return only the real ones instead of inventing fake targets. ${STRICT_JSON_REMINDER}`;
 }
 
-export function universalLayoutRetryPrompt(requested = 1, excludedSlots = [], targetInstruction = '') {
+export function universalLayoutRetryPrompt(requested = 1, excludedSlots = [], targetInstruction = '', focusPoint = null, focusRadius = 0.28) {
   const count = Math.max(1, Math.min(MAX_SLOTS, Number(requested) || 1));
   const userIntent = clean(targetInstruction, 600);
   const intentPrompt = userIntent ? ` Keep prioritizing the explicit user target intent ${JSON.stringify(userIntent)}.` : '';
-  return `The previous result did not provide ${count} distinct usable unreserved target(s). Re-inventory the WHOLE image, including top, bottom, left, right and center. Reconsider small, tilted, peripheral and partially overlapped objects that still expose a real usable face. Look for independent content-bearing faces, not merely repeated categories or the largest central area. Do not merge separate objects, duplicate the same physical surface, return a reserved area, use full-object boxes or invent background regions.${intentPrompt}${reservedPrompt(excludedSlots)}`;
+  const focus = focusPrompt(focusPoint, focusRadius);
+  return `The previous result did not provide ${count} distinct usable unreserved target(s). Re-inventory the WHOLE image, including top, bottom, left, right and center. Reconsider small, tilted, peripheral and partially overlapped objects that still expose a real usable face. Look for independent content-bearing faces, not merely repeated categories or the largest central area. Do not merge separate objects, duplicate the same physical surface, return a reserved area, use full-object boxes or invent background regions.${intentPrompt}${focus}`;
 }
 
-async function requestLayout(image, requested, excludedSlots = [], targetInstruction = '', env = process.env) {
+async function requestLayout(image, requested, excludedSlots = [], targetInstruction = '', focusPoint = null, focusRadius = 0.28, env = process.env) {
   const schema = universalLayoutSchema(requested);
   let lastError = null;
-
   for (let attempt = 1; attempt <= 2; attempt += 1) {
-    const retry = attempt === 2 ? `\n\n${universalLayoutRetryPrompt(requested, excludedSlots, targetInstruction)}` : '';
+    const retry = attempt === 2 ? `\n\n${universalLayoutRetryPrompt(requested, excludedSlots, targetInstruction, focusPoint, focusRadius)}` : '';
     try {
       const payload = await postVision({
         messages: [
           {
             role: 'system',
-            content: `You are a precise visual geometry assistant for a universal professional mockup studio. Inventory the whole composition before selecting targets. Detect distinct real content-bearing surfaces regardless of object category, scale, orientation or position. Never anchor only on the largest central object and never collapse separate surfaces into one. Respect reserved/approved regions and search around them for the next unresolved targets. ${STRICT_JSON_REMINDER}`,
+            content: `You are a precise visual geometry assistant for a universal professional mockup studio. Inventory the whole composition before selecting targets. Detect distinct real content-bearing surfaces regardless of object category, scale, orientation or position. When the user supplies a click focus, spatial locality outranks generic salience: solve the surface around that click instead of drifting to a larger object elsewhere. Never anchor only on the largest central object and never collapse separate surfaces into one. Respect reserved/approved regions and search around them for the next unresolved targets. ${STRICT_JSON_REMINDER}`,
           },
-          { role: 'user', content: `${universalLayoutPrompt(requested, excludedSlots, targetInstruction)}${retry}` },
+          { role: 'user', content: `${universalLayoutPrompt(requested, excludedSlots, targetInstruction, focusPoint, focusRadius)}${retry}` },
         ],
         image,
         response_format: jsonResponseFormat(schema),
       }, env);
-
       const structured = extractStructuredVisionResult(payload);
       const raw = structured ? JSON.stringify(structured) : extractText(payload);
       const parsed = structured || parseJsonText(raw);
-      if (!hasSurfaceCoverage(parsed, requested, excludedSlots)) {
-        throw new Error('A resposta não contém áreas distintas e não reservadas suficientes para o mapeamento solicitado.');
+      if (!hasSurfaceCoverage(parsed, requested, excludedSlots, focusPoint, focusRadius)) {
+        throw new Error('A resposta não contém áreas distintas, locais e não reservadas suficientes para o mapeamento solicitado.');
       }
       return parsed;
     } catch (error) {
       lastError = error;
       if (error?.responseBody) {
-        try { sanitizeJsonText(error.responseBody); } catch { /* diagnostic only */ }
+        try { sanitizeJsonText(error.responseBody); } catch { }
       }
     }
   }
-
   throw lastError || new Error('A análise visual não retornou áreas válidas.');
 }
 
@@ -246,16 +248,18 @@ export async function analyzeUniversalLayout(body = {}, env = process.env) {
   const requested = requestedCount(body);
   const excludedSlots = normalizeExcludedSlots(body.excludedSlots || body.excludedQuads || []);
   const targetInstruction = clean(body.targetInstruction || body.instruction, 600);
-
+  const focusPoint = normalizeFocusPoint(body.focusPoint || body.clickPoint || null);
+  const focusRadius = normalizeFocusRadius(body.focusRadius);
   try {
-    const parsed = await requestLayout(image, requested, excludedSlots, targetInstruction, env);
+    const parsed = await requestLayout(image, requested, excludedSlots, targetInstruction, focusPoint, focusRadius, env);
     return {
-      slots: selectSurfaceCandidates(parsed, requested, excludedSlots),
+      slots: selectSurfaceCandidates(parsed, requested, excludedSlots, focusPoint, focusRadius),
       requestedSlots: requested,
       excludedSlots: excludedSlots.length,
+      focusPoint,
       mappingStatus: 'validated',
       surfaceValidated: true,
-      provider: 'cloudflare-vision-universal-layout',
+      provider: focusPoint ? 'cloudflare-vision-focused-layout' : 'cloudflare-vision-universal-layout',
       model: visionModel(),
     };
   } catch (error) {
@@ -264,11 +268,14 @@ export async function analyzeUniversalLayout(body = {}, env = process.env) {
       slots: createUniversalFallbackSlots(),
       requestedSlots: requested,
       excludedSlots: excludedSlots.length,
+      focusPoint,
       mappingStatus: 'fallback',
       surfaceValidated: false,
-      warning: requested > 1
-        ? `A IA não conseguiu validar ${requested} áreas distintas fora das superfícies já reservadas. Nenhuma arte foi aplicada para evitar uma distribuição parcial ou incorreta.`
-        : 'A IA não encontrou uma nova superfície válida fora das áreas já reservadas. Revise a composição ou tente novamente.',
+      warning: focusPoint
+        ? 'Não foi possível validar automaticamente a superfície próxima ao clique. Use o ajuste manual dos quatro cantos para concluir sem perder a composição.'
+        : requested > 1
+          ? `A análise não conseguiu validar ${requested} áreas distintas fora das superfícies já reservadas. Nenhuma arte foi aplicada para evitar uma distribuição parcial ou incorreta.`
+          : 'Não foi possível encontrar uma nova superfície válida fora das áreas já reservadas. Revise a composição ou tente novamente.',
       diagnostic: clean(error?.message, 240),
       provider: 'universal-layout-fallback',
       model: visionModel(),
