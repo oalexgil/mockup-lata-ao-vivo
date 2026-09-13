@@ -28,4 +28,8 @@
 
     return response;
   };
+
+  import('./studio-guided-multi-art.js').catch((error) => {
+    console.warn('[guided-multi-art] falha ao carregar o workflow guiado.', error);
+  });
 })();
