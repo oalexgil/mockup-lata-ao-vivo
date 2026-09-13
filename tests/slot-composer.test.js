@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { orderQuadPoints, validQuad, cropAroundPoint, pointToCrop, quadFromCrop, distanceToQuad, overlapRatio, createSlot, updateSlot, freezeSlot, reopenSlot, outputReady, SLOT_STATUS } from '../src/slot-composer.js';
+
+test('orders arbitrary corner clicks',()=>{const q=orderQuadPoints([{x:.8,y:.8},{x:.2,y:.2},{x:.2,y:.8},{x:.8,y:.2}]);assert.deepEqual(q,[{x:.2,y:.2},{x:.8,y:.2},{x:.8,y:.8},{x:.2,y:.8}]);assert.equal(validQuad(q),true);});
+test('rejects degenerate quad',()=>assert.equal(validQuad([{x:.1,y:.1},{x:.2,y:.1},{x:.3,y:.1},{x:.4,y:.1}]),false));
+test('maps local crop result back to scene',()=>{const crop=cropAroundPoint({x:.92,y:.2},{width:.5,height:.5});const local=pointToCrop({x:.92,y:.2},crop);assert.ok(local.x>=0&&local.x<=1);const q=quadFromCrop([{x:.1,y:.1},{x:.9,y:.1},{x:.9,y:.9},{x:.1,y:.9}],crop);assert.equal(validQuad(q),true);assert.ok(distanceToQuad(q,{x:.92,y:.2})<.15);});
+test('detects strong overlap',()=>{const a=[{x:.1,y:.1},{x:.5,y:.1},{x:.5,y:.5},{x:.1,y:.5}],b=[{x:.12,y:.12},{x:.48,y:.12},{x:.48,y:.48},{x:.12,y:.48}];assert.ok(overlapRatio(a,b)>.7);});
+test('slot edits return approval to preview',()=>{const q=[{x:.1,y:.1},{x:.5,y:.1},{x:.5,y:.5},{x:.1,y:.5}];let slots=[createSlot({id:'1',quad:q,artworkKey:'a'})];slots=freezeSlot(slots,'1');assert.equal(slots[0].status,SLOT_STATUS.FROZEN);slots=updateSlot(slots,'1',{artworkKey:'b'});assert.equal(slots[0].status,SLOT_STATUS.PREVIEW);slots=freezeSlot(slots,'1');slots=reopenSlot(slots,'1');assert.equal(slots[0].status,SLOT_STATUS.PREVIEW);});
+test('export readiness ignores unused art files but blocks previews',()=>{const q=[{x:.1,y:.1},{x:.5,y:.1},{x:.5,y:.5},{x:.1,y:.5}];let slots=[createSlot({id:'1',quad:q,artworkKey:'a'})];assert.equal(outputReady(slots),false);slots=freezeSlot(slots,'1');assert.equal(outputReady(slots),true);slots.push(createSlot({id:'2',quad:[{x:.55,y:.1},{x:.9,y:.1},{x:.9,y:.4},{x:.55,y:.4}],artworkKey:'b'}));assert.equal(outputReady(slots),false);});
