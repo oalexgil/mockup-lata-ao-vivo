@@ -67,7 +67,7 @@ test('coverage can use reserve candidates after duplicate removal', () => {
       slot('one-copy', 0.07, 0.11, 0.22, 0.22, 0.97),
       slot('two', 0.36, 0.10, 0.22, 0.22, 0.94),
       slot('three', 0.66, 0.10, 0.22, 0.22, 0.93),
-      slot('four', 0.22, 0.58, 0.22, 0.22, 0.91),
+      slot('four', 0.20, 0.58, 0.22, 0.20, 0.91),
       slot('reserve', 0.62, 0.58, 0.22, 0.20, 0.55),
     ],
   };

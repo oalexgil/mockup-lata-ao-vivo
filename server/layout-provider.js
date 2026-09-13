@@ -1,122 +1,56 @@
 import {
-  isUsableMockupSlot,
-  normalizeRefinementPlan,
-  normalizeSingleApplicationPlan,
-  normalizeUniversalSlots,
-} from '../src/universal-mockup.js';
+  createUniversalFallbackSlots,
+  extractStructuredVisionResult,
+  jsonResponseFormat,
+  layoutVisionResponseFormat,
+  parseJsonText,
+  sanitizeJsonText,
+  sortVisionSlots,
+  usableVisionSlots,
+  visionModel,
+} from './vision-provider.js';
 
-const VISION_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
-const STRICT_JSON_REMINDER = 'Return only valid JSON. Do not include markdown. Do not include explanations. Do not include code fences.';
-const SINGLE_APPLICATION_ROOT_PROMPT = `Apply the uploaded immutable artwork to the most appropriate visible printable or display surface in the approved mockup. The artwork itself is locked brand content: never rewrite, redraw, recolor, restyle, crop away, replace, hallucinate, or regenerate letters, wording, typography, logos, drawings, illustrations, or internal composition. Your job is only to choose a physically plausible target quadrilateral and conservative integration parameters. The browser will render the original uploaded pixels deterministically. Respect the product geometry, perspective, material, existing illumination, shadows and reflections. Never choose an interior cavity, opening, rim, handle, hole, background, shadow, negative space, or the full object bounding box.`;
+const MAX_SLOTS = 8;
+const MAX_IMAGE_CHARS = 24 * 1024 * 1024;
+const STRICT_JSON_REMINDER = 'Return only valid JSON. Do not include markdown, explanations or code fences.';
 let agreementPromise = null;
-
-const POINT_SCHEMA = {
-  type: 'object',
-  properties: {
-    x: { type: 'number', minimum: 0, maximum: 1 },
-    y: { type: 'number', minimum: 0, maximum: 1 },
-  },
-  required: ['x', 'y'],
-};
-
-const SLOT_SCHEMA = {
-  type: 'object',
-  properties: {
-    id: { type: 'string' },
-    label: { type: 'string' },
-    confidence: { type: 'number', minimum: 0, maximum: 1 },
-    quad: {
-      type: 'array',
-      minItems: 4,
-      maxItems: 4,
-      items: POINT_SCHEMA,
-    },
-  },
-  required: ['id', 'label', 'confidence', 'quad'],
-};
-
-const INTEGRATION_SCHEMA = {
-  type: 'object',
-  properties: {
-    preserveLight: { type: 'number' },
-    brightness: { type: 'number' },
-    contrast: { type: 'number' },
-    saturation: { type: 'number' },
-    opacity: { type: 'number' },
-    blend: { type: 'string' },
-    note: { type: 'string' },
-  },
-  required: [
-    'preserveLight',
-    'brightness',
-    'contrast',
-    'saturation',
-    'opacity',
-    'blend',
-    'note',
-  ],
-};
-
-const LAYOUT_JSON_SCHEMA = {
-  type: 'object',
-  properties: {
-    slots: {
-      type: 'array',
-      items: SLOT_SCHEMA,
-    },
-  },
-  required: ['slots'],
-};
-
-const SINGLE_APPLICATION_JSON_SCHEMA = {
-  type: 'object',
-  properties: {
-    summary: { type: 'string' },
-    target: SLOT_SCHEMA,
-    integration: INTEGRATION_SCHEMA,
-  },
-  required: ['summary', 'target', 'integration'],
-};
-
-const REFINEMENT_JSON_SCHEMA = {
-  type: 'object',
-  properties: {
-    summary: { type: 'string' },
-    slots: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          index: { type: 'number' },
-          ...INTEGRATION_SCHEMA.properties,
-        },
-        required: ['index', ...INTEGRATION_SCHEMA.required],
-      },
-    },
-  },
-  required: ['summary', 'slots'],
-};
 
 function clean(value, max = 16000) {
   return String(value || '').trim().slice(0, max);
 }
 
-function cloudflareReady(env = process.env) {
-  return Boolean(env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_API_TOKEN);
+function requestedCount(body = {}) {
+  return Math.max(1, Math.min(MAX_SLOTS, Number(body.desiredSlots || body.artworkCount || 1) || 1));
 }
 
-function modelUrl(env = process.env, model = VISION_MODEL) {
+function candidateLimit(count) {
+  const normalized = Math.max(1, Math.min(MAX_SLOTS, Number(count) || 1));
+  return normalized > 1 ? Math.min(MAX_SLOTS, normalized + 2) : 1;
+}
+
+function imageValue(value) {
+  const image = clean(value, MAX_IMAGE_CHARS);
+  if (!/^data:image\/(png|jpeg|jpg|webp);base64,/i.test(image)) {
+    const error = new Error('Imagem inválida para análise visual.');
+    error.statusCode = 400;
+    throw error;
+  }
+  return image;
+}
+
+function modelUrl(env = process.env) {
   const accountId = encodeURIComponent(env.CLOUDFLARE_ACCOUNT_ID || '');
-  return `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${model}`;
+  return `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${visionModel()}`;
 }
 
-async function postModel(payload, env = process.env, model = VISION_MODEL) {
-  if (!cloudflareReady(env)) {
+async function postVision(payload, env = process.env) {
+  if (!env.CLOUDFLARE_ACCOUNT_ID || !env.CLOUDFLARE_API_TOKEN) {
     const error = new Error('Cloudflare não configurado para análise visual.');
     error.statusCode = 503;
     throw error;
   }
-  const response = await fetch(modelUrl(env, model), {
+
+  const response = await fetch(modelUrl(env), {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
@@ -128,6 +62,7 @@ async function postModel(payload, env = process.env, model = VISION_MODEL) {
   let json = {};
   try { json = text ? JSON.parse(text) : {}; }
   catch { json = { raw: text }; }
+
   if (!response.ok || json?.success === false) {
     const message = (json?.errors || []).map((item) => item?.message).filter(Boolean).join(' | ')
       || json?.error?.message
@@ -143,7 +78,7 @@ async function postModel(payload, env = process.env, model = VISION_MODEL) {
 
 async function ensureAgreement(env = process.env) {
   if (!agreementPromise) {
-    agreementPromise = postModel({ prompt: 'agree' }, env).catch((error) => {
+    agreementPromise = postVision({ prompt: 'agree' }, env).catch((error) => {
       agreementPromise = null;
       throw error;
     });
@@ -158,162 +93,7 @@ function extractText(payload) {
     payload?.response,
     payload?.result,
   ];
-  const value = candidates.find((item) => typeof item === 'string');
-  return clean(value, 24000);
-}
-
-export function extractStructuredVisionResult(payload) {
-  const candidates = [
-    payload?.result?.response,
-    payload?.response,
-    payload?.result?.json,
-  ];
-  return candidates.find((item) => item && typeof item === 'object' && !Array.isArray(item)) || null;
-}
-
-function firstBalancedObject(text) {
-  let start = -1;
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index];
-    if (start < 0) {
-      if (char === '{') {
-        start = index;
-        depth = 1;
-      }
-      continue;
-    }
-
-    if (inString) {
-      if (escaped) escaped = false;
-      else if (char === '\\') escaped = true;
-      else if (char === '"') inString = false;
-      continue;
-    }
-
-    if (char === '"') {
-      inString = true;
-      continue;
-    }
-    if (char === '{') depth += 1;
-    if (char === '}') {
-      depth -= 1;
-      if (depth === 0) return text.slice(start, index + 1);
-    }
-  }
-  return '';
-}
-
-export function sanitizeJsonText(text) {
-  const raw = clean(text, 24000)
-    .replace(/^\uFEFF/, '')
-    .replace(/```(?:json|javascript|js)?/gi, '')
-    .replace(/```/g, '')
-    .replace(/[“”]/g, '"')
-    .replace(/[‘’]/g, "'")
-    .replace(/\u00a0/g, ' ')
-    .trim();
-  const candidate = firstBalancedObject(raw) || raw;
-  return candidate.replace(/,\s*([}\]])/g, '$1').trim();
-}
-
-export function parseJsonText(text) {
-  const sanitized = sanitizeJsonText(text);
-  if (!sanitized) throw new Error('A análise visual não retornou conteúdo.');
-  try {
-    return JSON.parse(sanitized);
-  } catch (cause) {
-    const error = new Error('A análise visual retornou JSON inválido.');
-    error.cause = cause;
-    error.sanitized = sanitized;
-    throw error;
-  }
-}
-
-function logVisionAttempt(label, attempt, raw, sanitized, error = null) {
-  console.info(`[vision:${label}] resposta bruta tentativa ${attempt}:`, raw || '(vazia)');
-  console.info(`[vision:${label}] resposta sanitizada tentativa ${attempt}:`, sanitized || '(vazia)');
-  if (error) console.warn(`[vision:${label}] erro tentativa ${attempt}:`, error);
-}
-
-export function jsonResponseFormat(schema) {
-  return {
-    type: 'json_schema',
-    json_schema: schema,
-  };
-}
-
-async function requestStructuredVision({
-  image,
-  prompt,
-  system,
-  env,
-  label,
-  validate,
-  schema,
-  retryInstruction = 'Return a different, clearly usable exterior/display/print surface with a non-degenerate quadrilateral.',
-}) {
-  let lastError = null;
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
-    const retryReminder = attempt === 2
-      ? `\n\n${STRICT_JSON_REMINDER} The previous candidate was rejected. ${retryInstruction}`
-      : '';
-    try {
-      const payload = await postModel({
-        messages: [
-          { role: 'system', content: `${system} ${STRICT_JSON_REMINDER}` },
-          { role: 'user', content: `${prompt}${retryReminder}` },
-        ],
-        image,
-        response_format: jsonResponseFormat(schema),
-      }, env);
-
-      const structured = extractStructuredVisionResult(payload);
-      const raw = structured ? JSON.stringify(structured) : extractText(payload);
-      const sanitized = structured ? raw : sanitizeJsonText(raw);
-      const parsed = structured || parseJsonText(raw);
-
-      if (validate && !validate(parsed)) {
-        throw new Error('A resposta JSON não respeitou o contrato visual esperado.');
-      }
-      logVisionAttempt(label, attempt, raw, sanitized);
-      return parsed;
-    } catch (error) {
-      lastError = error;
-      const responseBody = clean(error?.responseBody, 4000);
-      const sanitized = responseBody ? sanitizeJsonText(responseBody) : '';
-      logVisionAttempt(label, attempt, responseBody, sanitized, error);
-    }
-  }
-  throw lastError || new Error('A análise visual não retornou JSON válido.');
-}
-
-function imageValue(imageDataUrl) {
-  const value = clean(imageDataUrl, 24 * 1024 * 1024);
-  if (!/^data:image\/(png|jpeg|jpg|webp);base64,/i.test(value)) {
-    const error = new Error('Imagem inválida para análise visual.');
-    error.statusCode = 400;
-    throw error;
-  }
-  return value;
-}
-
-function normalizedArtworkAspectRatio(value) {
-  const ratio = Number(value);
-  if (!Number.isFinite(ratio) || ratio <= 0) return 1;
-  return Math.max(0.1, Math.min(10, ratio));
-}
-
-function slotCenter(slot) {
-  const quad = Array.isArray(slot?.quad) ? slot.quad : [];
-  if (quad.length !== 4) return { x: 0, y: 0 };
-  return quad.reduce((acc, point) => ({
-    x: acc.x + Number(point.x || 0) / 4,
-    y: acc.y + Number(point.y || 0) / 4,
-  }), { x: 0, y: 0 });
+  return clean(candidates.find((item) => typeof item === 'string'), 24000);
 }
 
 function slotBounds(slot) {
@@ -324,4 +104,140 @@ function slotBounds(slot) {
   if (xs.some((value) => !Number.isFinite(value)) || ys.some((value) => !Number.isFinite(value))) return null;
   return {
     left: Math.min(...xs),
-    top: Math.min(
+    top: Math.min(...ys),
+    right: Math.max(...xs),
+    bottom: Math.max(...ys),
+  };
+}
+
+export function surfaceOverlap(a, b) {
+  const boxA = slotBounds(a);
+  const boxB = slotBounds(b);
+  if (!boxA || !boxB) return 0;
+  const left = Math.max(boxA.left, boxB.left);
+  const top = Math.max(boxA.top, boxB.top);
+  const right = Math.min(boxA.right, boxB.right);
+  const bottom = Math.min(boxA.bottom, boxB.bottom);
+  const intersection = Math.max(0, right - left) * Math.max(0, bottom - top);
+  if (!intersection) return 0;
+  const areaA = Math.max(0, boxA.right - boxA.left) * Math.max(0, boxA.bottom - boxA.top);
+  const areaB = Math.max(0, boxB.right - boxB.left) * Math.max(0, boxB.bottom - boxB.top);
+  const union = areaA + areaB - intersection;
+  return union > 0 ? intersection / union : 0;
+}
+
+export function distinctSurfaceCandidates(slots = [], overlapThreshold = 0.68) {
+  const ranked = [...slots].sort((a, b) => Number(b?.confidence || 0) - Number(a?.confidence || 0));
+  const accepted = [];
+  for (const slot of ranked) {
+    if (accepted.some((candidate) => surfaceOverlap(slot, candidate) >= overlapThreshold)) continue;
+    accepted.push(slot);
+  }
+  return accepted;
+}
+
+export function selectSurfaceCandidates(value, requested = 1) {
+  const count = Math.max(1, Math.min(MAX_SLOTS, Number(requested) || 1));
+  const usable = usableVisionSlots(value, MAX_SLOTS);
+  const distinct = distinctSurfaceCandidates(usable);
+  const strongest = distinct
+    .sort((a, b) => Number(b?.confidence || 0) - Number(a?.confidence || 0))
+    .slice(0, count);
+  return sortVisionSlots(strongest);
+}
+
+export function hasSurfaceCoverage(value, requested = 1) {
+  const count = Math.max(1, Math.min(MAX_SLOTS, Number(requested) || 1));
+  return selectSurfaceCandidates(value, count).length >= count;
+}
+
+export function universalLayoutSchema(requested = 1) {
+  const count = Math.max(1, Math.min(MAX_SLOTS, Number(requested) || 1));
+  const schema = structuredClone(layoutVisionResponseFormat(count).json_schema);
+  schema.properties.slots.maxItems = candidateLimit(count);
+  return schema;
+}
+
+export function universalLayoutPrompt(requested = 1) {
+  const count = Math.max(1, Math.min(MAX_SLOTS, Number(requested) || 1));
+  const limit = candidateLimit(count);
+  const multi = count > 1
+    ? `First inventory the ENTIRE composition object by object and region by region. Find at least ${count} DISTINCT usable target surfaces when they truly exist. You may return up to ${limit} strong candidates so validation can discard duplicates or weak geometry. Do not stop at the largest, easiest or most central target. Separate physical faces remain separate even when they share the same category, differ greatly in size, are tilted, peripheral, partly overlapped or shown at different perspectives. Do not split one continuous surface merely to reach the requested count.`
+    : 'Choose the single clearest physically usable target surface.';
+
+  return `Analyze this mockup scene and identify ${count} clean visual surface(s) where uploaded artwork can realistically be placed. ${multi} A usable target is a bounded physical region intended or plausible for receiving 2D visual content. Examples include display areas, printed panels, package faces, cards, signs, covers, pages, posters, labels, boards, garment print regions and other brandable faces; these examples are illustrative, NOT a whitelist. Work from what is actually visible and do not assume any product category. For framed or electronic displays, select the active content area inside the bezel/frame, not the whole device. For packaging or rigid products, select the visible face itself. For flexible material, use a stable printable region rather than seams, edges or deep folds. For curved surfaces, use the central visible region and approximate its perspective with four well-separated points. Return JSON only as {"slots":[{"id":"1","label":"short surface description","confidence":0.0,"quad":[{"x":0.0,"y":0.0},{"x":0.0,"y":0.0},{"x":0.0,"y":0.0},{"x":0.0,"y":0.0}]}]}. Coordinates are normalized 0..1 in top-left, top-right, bottom-right, bottom-left order. Never select an interior cavity, opening, rim, handle, hole, background, shadow, negative space or full-object bounding box. Do not return duplicate or strongly overlapping slots. If fewer than ${count} real usable surfaces exist, return only the real ones instead of inventing fake targets. ${STRICT_JSON_REMINDER}`;
+}
+
+export function universalLayoutRetryPrompt(requested = 1) {
+  const count = Math.max(1, Math.min(MAX_SLOTS, Number(requested) || 1));
+  return `The previous result did not provide ${count} distinct usable targets. Re-inventory the WHOLE image, including top, bottom, left, right and center. Reconsider small, tilted, peripheral and partially overlapped objects that still expose a real usable face. Look for independent content-bearing faces, not merely repeated categories or the largest central area. Do not merge separate objects, duplicate the same physical surface, use full-object boxes or invent background regions.`;
+}
+
+async function requestLayout(image, requested, env = process.env) {
+  const schema = universalLayoutSchema(requested);
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const retry = attempt === 2 ? `\n\n${universalLayoutRetryPrompt(requested)}` : '';
+    try {
+      const payload = await postVision({
+        messages: [
+          {
+            role: 'system',
+            content: `You are a precise visual geometry assistant for a universal professional mockup studio. Inventory the whole composition before selecting targets. Detect distinct real content-bearing surfaces regardless of object category, scale, orientation or position. Never anchor only on the largest central object and never collapse separate surfaces into one. ${STRICT_JSON_REMINDER}`,
+          },
+          { role: 'user', content: `${universalLayoutPrompt(requested)}${retry}` },
+        ],
+        image,
+        response_format: jsonResponseFormat(schema),
+      }, env);
+
+      const structured = extractStructuredVisionResult(payload);
+      const raw = structured ? JSON.stringify(structured) : extractText(payload);
+      const parsed = structured || parseJsonText(raw);
+      if (!hasSurfaceCoverage(parsed, requested)) {
+        throw new Error('A resposta não contém áreas distintas suficientes para o mapeamento solicitado.');
+      }
+      return parsed;
+    } catch (error) {
+      lastError = error;
+      if (error?.responseBody) {
+        try { sanitizeJsonText(error.responseBody); } catch { /* diagnostic only */ }
+      }
+    }
+  }
+
+  throw lastError || new Error('A análise visual não retornou áreas válidas.');
+}
+
+export async function analyzeUniversalLayout(body = {}, env = process.env) {
+  await ensureAgreement(env);
+  const image = imageValue(body.imageDataUrl);
+  const requested = requestedCount(body);
+
+  try {
+    const parsed = await requestLayout(image, requested, env);
+    return {
+      slots: selectSurfaceCandidates(parsed, requested),
+      requestedSlots: requested,
+      mappingStatus: 'validated',
+      surfaceValidated: true,
+      provider: 'cloudflare-vision-universal-layout',
+      model: visionModel(),
+    };
+  } catch (error) {
+    console.warn('[layout-provider] não foi possível validar todas as áreas solicitadas.', error);
+    return {
+      slots: createUniversalFallbackSlots(),
+      requestedSlots: requested,
+      mappingStatus: 'fallback',
+      surfaceValidated: false,
+      warning: requested > 1
+        ? `A IA não conseguiu validar ${requested} áreas distintas. Nenhuma arte foi aplicada para evitar uma distribuição parcial ou incorreta. Tente mapear novamente ou revise as áreas.`
+        : 'A IA não encontrou uma superfície imprimível válida. Revise ou tente novamente.',
+      diagnostic: clean(error?.message, 240),
+      provider: 'universal-layout-fallback',
+      model: visionModel(),
+    };
+  }
+}
