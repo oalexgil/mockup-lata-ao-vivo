@@ -1,144 +1,259 @@
 # Mockup Vision
 
-Browser-based computer-vision prototype for applying packaging artwork to a real cylindrical object in camera or photo input.
+**Create the scene. Map the surfaces. Apply the original artwork.**
 
-The project combines classical vision, object detection and WebGL rendering to estimate a can-like object's pose, fit a virtual cylinder and composite label artwork while preserving light and curvature from the captured scene.
+Mockup Vision is a guided AI mockup studio. It separates scene generation from final brand application so generative AI can create the product, composition and lighting while the user's real logo, label or artwork remains the source of truth.
 
-> **Status:** functional prototype / research product. The automatic detector is a heuristic bootstrap, not a can-specific trained model, and manual fitting remains an intentional fallback.
+> **Status:** functional V2.1 prototype. Cloudflare Workers AI is the default scene-generation provider. The Studio now adds universal AI surface mapping, numbered guides, one-to-one artwork mapping and AI-assisted finishing without asking the model to redraw brand artwork.
 
-## What it demonstrates
-
-- real-time camera and photo workflows;
-- MediaPipe object detection used only to seed the initial region;
-- classical edge tracking for continuous fitting;
-- cylinder geometry and label rendering with Three.js;
-- scene-aware label compositing using the real image luminance;
-- manual four-corner fitting when automation is unreliable;
-- fully client-side processing: images are not uploaded by the application.
-
-## Why this project matters
-
-Most mockup tools either render a generic 3D product or require manual image editing. Mockup Vision explores a different workflow: use the client's real photo or camera feed, infer the product geometry and place the artwork directly on that object.
-
-That makes the repository useful as a portfolio example of **computer vision + geometry + WebGL + product UX**, while still being honest about the prototype's current limits.
-
-## Current architecture
-
-Today the runtime is intentionally simple and concentrated in a single `index.html`:
+## Product flow
 
 ```text
-index.html
-├── UI and controls
-├── camera / photo input
-├── MediaPipe detector bootstrap
-├── edge-based tracking
-├── geometry estimation
-├── Three.js cylinder rendering
-├── image compositing
-└── export to PNG
+1. Describe the mockup
+        ↓
+2. Generate the empty scene
+        ↓
+3. Iterate or approve the scene
+        ↓
+4. Upload one or many artworks
+        ↓
+5. AI identifies usable surfaces
+        ↓
+6. Numbered guides map artwork ↔ surface
+        ↓
+7. AI recommends lighting/material integration
+        ↓
+8. Browser renderer applies original artwork
+        ↓
+9. Export PNG
 ```
 
-This keeps deployment trivial, but it is now the main maintainability constraint. The target architecture is documented in [ARCHITECTURE.md](ARCHITECTURE.md).
+## Immutable artwork rule
 
-## Runtime pipeline
+This is a product invariant:
 
-1. **Input** — camera or local photo.
-2. **Detection bootstrap** — EfficientDet Lite2, with Lite0 as model fallback.
-3. **Classical tracking** — vertical edge gradients refine the object's lateral boundaries.
-4. **Geometry** — line fitting estimates center, radius, height, roll and approximate tilt.
-5. **Rendering** — Three.js maps the uploaded artwork onto a virtual cylinder.
-6. **Compositing** — label mode multiplies the virtual artwork by luminance from the real scene.
-7. **Fallback** — manual mode and four-corner fitting stay available when automation is not trustworthy.
+> **The uploaded artwork is never treated as generative content.**
 
-## Dependencies
+Mockup Vision must not ask an image model to rewrite:
 
-The current static prototype loads pinned browser dependencies from CDNs:
+- colors;
+- letters or wording;
+- typography;
+- logos;
+- illustrations;
+- drawings;
+- internal artwork composition.
 
-- `@mediapipe/tasks-vision` `0.10.14`;
-- `three` `0.128.0`;
-- Google-hosted EfficientDet Lite2 and Lite0 model assets.
+Allowed changes are only those required to place the original asset on a photographed surface:
 
-There is no application backend and no inference API.
+- perspective;
+- scale and rotation;
+- surface deformation;
+- lighting and shadow integration;
+- reflection/material integration;
+- conservative opacity/blend adjustments.
 
-## Local development
+The AI analyzes geometry and finishing. The browser renderer applies the original uploaded pixels.
 
-Camera access requires a secure context. `localhost` is allowed for development.
+## Cloudflare-first generation
+
+The Studio calls:
+
+```text
+POST /api/generate-scene
+```
+
+Provider priority is:
+
+```text
+Cloudflare Workers AI
+        ↓ fallback
+OpenAI (optional)
+        ↓ fallback
+Manual image import
+```
+
+Default scene model:
+
+```text
+@cf/black-forest-labs/flux-1-schnell
+```
+
+Secrets remain server-side. Nothing is written to browser JavaScript or `localStorage`.
+
+Setup: [docs/CLOUDFLARE_SETUP.md](docs/CLOUDFLARE_SETUP.md)
+
+## Universal surface mapping
+
+After the user approves a scene and uploads artwork, the Studio calls:
+
+```text
+POST /api/analyze-layout
+```
+
+Cloudflare Vision analyzes the whole mockup without assuming a particular object category. It returns one or more normalized four-point surfaces:
+
+```json
+{
+  "slots": [
+    {
+      "index": 1,
+      "label": "front printable surface",
+      "quad": [
+        { "x": 0.31, "y": 0.28 },
+        { "x": 0.66, "y": 0.30 },
+        { "x": 0.63, "y": 0.69 },
+        { "x": 0.34, "y": 0.68 }
+      ]
+    }
+  ]
+}
+```
+
+The Studio draws numbered guides and maps artwork 1 → area 1, artwork 2 → area 2, and so on.
+
+The mapping is generic: cup, box, notebook, poster, package, flyer, sign, screen and multi-piece presentation are all treated as surfaces rather than hard-coded product types.
+
+## AI-assisted finishing
+
+After mapping, the user clicks **Finalizar com IA**.
+
+The Studio sends a preview with numbered slots to:
+
+```text
+POST /api/refine-plan
+```
+
+The vision model may recommend only conservative integration values such as:
+
+- preserve scene light;
+- brightness;
+- contrast;
+- saturation;
+- opacity;
+- blend mode.
+
+Those recommendations are normalized and clamped before use. The model does **not** receive permission to rewrite the artwork itself.
+
+The final image is then composed locally from:
+
+```text
+approved scene
++ original uploaded artwork files
++ AI surface geometry
++ conservative integration plan
+```
+
+This design is intentionally different from asking a generative image model to redraw a label inside a photo.
+
+## Multiple artworks
+
+One or many artwork files can be uploaded in the same session.
+
+A **slot** represents one surface and contains:
+
+- normalized four-corner geometry;
+- a numbered visual guide;
+- an assigned artwork index;
+- confidence/label metadata;
+- an optional finishing plan.
+
+If the number of artworks and detected surfaces differs, the interface explains which assets have a surface and which do not.
+
+## Existing mockups
+
+The Studio can also start from an existing photo instead of an AI-generated scene. The same universal surface-mapping and immutable-artwork rules apply.
+
+The original legacy editor still contains manual four-corner tools and replacement controls, but the guided flow now prioritizes AI surface mapping and deterministic artwork rendering.
+
+## Current V2.1 files
+
+```text
+photo.html                        # guided Studio UI
+studio-app.js                     # preserved editor/rendering engine
+studio-ux.js                      # approval and progressive UX
+studio-universal.js               # universal AI mapping + immutable artwork layer
+studio-api-monitor.js             # visible backend error reporting
+
+src/studio-core.js                # slot/version helpers
+src/studio-flow.js                # approval → mapping → finalization state machine
+src/universal-mockup.js           # universal slots + fidelity policy + plan normalization
+src/scene-brief.js                # brand-safe scene prompt normalization
+src/planar-core.js                # planar geometry helpers
+
+server/index.js                   # Studio server + API routing
+server/cloudflare-provider.js     # Cloudflare scene-generation adapter
+server/vision-provider.js         # universal layout + finishing analysis
+server/openai-provider.js         # optional OpenAI fallback
+
+tests/studio-flow.test.js
+tests/universal-mockup.test.js
+```
+
+## Cylinder Lab
+
+The original can/cylinder experiment remains in `index.html` and is intentionally preserved as a separate research lab.
+
+The main Studio no longer assumes cylindrical geometry. Cylinder-specific work can return later as an optional specialized engine rather than as the universal default.
+
+## Development
+
+Run:
 
 ```bash
-python3 -m http.server 8000
+npm start
 ```
 
-Then open `http://localhost:8000`.
+Open:
 
-For repository checks:
+```text
+http://localhost:8000/
+```
+
+Repository checks:
 
 ```bash
-npm test
+npm run ci
 ```
-
-No package installation is required for the current test suite.
-
-## Using the prototype
-
-### Artwork
-
-Use a wide label image intended to wrap around a cylinder. Seamless left/right edges produce the best result.
-
-### Automatic fitting
-
-The detector does **not** use a can-specific model. It accepts plausible COCO classes such as bottle, cup, vase and bowl, then classical edge tracking takes over. Detection is therefore best understood as a coarse seed, not proof that the object is a can.
-
-### Manual fitting
-
-Manual mode is a first-class feature, not an error state. You can drag, resize, adjust rotation, snap to edges or mark four corners directly.
-
-### Composition modes
-
-- **Label attached:** preserves scene luminance so the label inherits real shadow and curvature cues.
-- **3D can:** renders the body and label with Three.js lighting when no physical can is available.
 
 ## Privacy and security
 
-The application processes camera frames, photos and artwork in the browser. The current code does not intentionally upload those user inputs. Third-party runtime assets are still loaded from CDN/model hosts, so offline-first and supply-chain hardening remain future work.
+Provider secrets stay on the server. Never commit Cloudflare or OpenAI credentials.
 
-See [SECURITY.md](SECURITY.md).
+The browser keeps the original artwork files locally and performs the final deterministic composition in the client. The vision request receives the mockup preview needed to identify geometry and finishing recommendations.
 
-## Validation
+See [SECURITY.md](SECURITY.md) and [docs/CLOUDFLARE_SETUP.md](docs/CLOUDFLARE_SETUP.md).
 
-A visually convincing result is not the same thing as a geometrically accurate fit. Before treating the engine as production-ready, validate it across:
+## Current limitations
 
-- can sizes and aspect ratios;
-- camera distances and angles;
-- textured and low-contrast backgrounds;
-- lighting conditions;
-- desktop and mobile browsers;
-- manual vs automatic fitting accuracy.
+- Cloudflare scene iteration still regenerates from text rather than preserving the previous image exactly;
+- AI surface geometry is probabilistic and still needs real-world validation across many mockup categories;
+- occlusion-aware masking is not implemented yet;
+- automatic reflection generation is conservative rather than physically simulated;
+- the universal finishing pass adjusts rendering parameters, not brand pixels;
+- visual regression fixtures need expansion.
 
-The proposed protocol is in [VALIDATION.md](VALIDATION.md).
-
-## Known limitations
-
-- EfficientDet is not trained specifically for cans in this workflow;
-- edge tracking depends on visible lateral contrast;
-- top-ellipse tilt is an approximation;
-- a single HTML file contains most runtime responsibilities;
-- WebGL/MediaPipe behavior varies by device and browser;
-- there is no automated visual-regression benchmark yet.
+These boundaries are deliberate: artwork fidelity takes priority over aggressive generative editing.
 
 ## Roadmap
 
-1. separate detection, tracking, geometry, rendering and compositing into modules;
-2. add GPU → CPU detector initialization fallback and explicit runtime diagnostics;
-3. create image fixtures and quantitative fitting benchmarks;
-4. support multiple packaging profiles such as bottle, cup and box;
-5. move CDN dependencies toward a reproducible build or vendored deployment;
-6. add a polished client-photo workflow for commercial mockup generation.
+### V2.2 — universal mapping validation
+- validate one-slot and multi-slot scenes;
+- add confidence thresholds and retry strategy;
+- add manual correction directly to universal guides;
+- add screenshot-based visual regression fixtures.
 
-## Repository quality
+### V2.3 — occlusion and materials
+- foreground occlusion masks;
+- material-aware reflection passes;
+- texture-aware replacement of old artwork;
+- stronger surface segmentation.
 
-This branch adds CI and regression checks around the current static runtime so future refactors can preserve important behavior before the monolith is split.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [CHANGELOG.md](CHANGELOG.md).
+### V3 — specialized engines
+- optional cylinder/packaging engine;
+- constrained proxy 3D;
+- richer material models;
+- shared project state between universal Studio and specialized engines.
 
 ## License
 
