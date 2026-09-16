@@ -68,9 +68,8 @@ export function normalizeArtworkAdjustments(input = {}) {
 
 export function artworkKey(fileLike, index = 0) {
   const name = String(fileLike?.name || `artwork-${index + 1}`);
-  const size = Number(fileLike?.size || 0);
   const modified = Number(fileLike?.lastModified || 0);
-  return `${index}:${name}:${size}:${modified}`;
+  return `${index}:${name}:${modified}`;
 }
 
 export function getArtworkAdjustments(key) {
