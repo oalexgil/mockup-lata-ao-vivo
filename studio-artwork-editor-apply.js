@@ -164,11 +164,20 @@ function replaceFileInput() {
   internalFileUpdate = false;
 }
 
+function integrationLight(adjustments) {
+  return Math.max(0, Math.min(
+    1,
+    integrationStrength(adjustments)
+      + adjustments.reflection * 0.1
+      + adjustments.contactShadow * 0.1,
+  ));
+}
+
 function dispatchIntegration(index, adjustments) {
   document.dispatchEvent(new CustomEvent('mockup:artwork-integration', {
     detail: {
       index,
-      preserveLight: Math.max(0, Math.min(1, integrationStrength(adjustments) * 0.78 + adjustments.reflection * 0.14 + adjustments.contactShadow * 0.08)),
+      preserveLight: integrationLight(adjustments),
       reflection: adjustments.reflection,
       contactShadow: adjustments.contactShadow,
       materialIntegration: adjustments.materialIntegration,
@@ -185,7 +194,7 @@ function syncVisibleSlotIntegration(index, adjustments, attempt = 0) {
     setTimeout(() => syncVisibleSlotIntegration(index, adjustments, attempt + 1), 120);
     return;
   }
-  const preserveLight = Math.max(0, Math.min(1, integrationStrength(adjustments) * 0.78 + adjustments.reflection * 0.14 + adjustments.contactShadow * 0.08));
+  const preserveLight = integrationLight(adjustments);
   assignments.forEach((select) => {
     const slotIndex = Number(select.dataset.slotAsset);
     document.querySelector(`[data-select-slot="${slotIndex}"]`)?.click();
@@ -211,13 +220,15 @@ document.addEventListener('mockup:artwork-adjusted', async (event) => {
   if (!original) return;
 
   try {
+    const adjustments = normalizeArtworkAdjustments(detail.adjustments || {});
     if (detail.reason === 'reset') {
       appliedFiles[index] = original;
       replaceFileInput();
-      setEditorStatus('Arte restaurada ao original. O arquivo enviado permaneceu preservado.', 'ok');
+      dispatchIntegration(index, adjustments);
+      syncVisibleSlotIntegration(index, adjustments);
+      setEditorStatus('Arte e integração restauradas ao padrão. O arquivo enviado permaneceu preservado.', 'ok');
       return;
     }
-    const adjustments = normalizeArtworkAdjustments(detail.adjustments || {});
     appliedFiles[index] = await renderAdjustedFile(original, adjustments);
     replaceFileInput();
     dispatchIntegration(index, adjustments);
