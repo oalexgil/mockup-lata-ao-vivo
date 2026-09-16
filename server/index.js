@@ -112,6 +112,8 @@ function injectStudioHelpers(filePath, data) {
     '<script type="module" src="studio-ux.js"></script>',
     '<script type="module" src="studio-enhancements.js"></script>',
     '<script type="module" src="studio-reference-support.js"></script>',
+    '<script type="module" src="studio-artwork-editor.js"></script>',
+    '<script type="module" src="studio-artwork-editor-apply.js"></script>',
     '<script type="module" src="studio-fidelity-guard.js"></script>',
     '<script type="module" src="studio-universal.js"></script>',
   ];
