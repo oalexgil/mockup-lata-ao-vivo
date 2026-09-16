@@ -1,5 +1,6 @@
 import http from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
+import { networkInterfaces } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { generateScene as generateOpenAIScene } from './openai-provider.js';
@@ -116,6 +117,8 @@ function injectStudioHelpers(filePath, data) {
     '<script type="module" src="studio-artwork-editor-apply.js"></script>',
     '<script type="module" src="studio-fidelity-guard.js"></script>',
     '<script type="module" src="studio-universal.js"></script>',
+    '<script type="module" src="studio-product-polish.js"></script>',
+    '<script type="module" src="studio-workspace.js"></script>',
   ];
   for (const script of scripts) {
     const src = script.match(/src="([^"]+)"/)?.[1];
@@ -147,6 +150,17 @@ async function serveStatic(req, res) {
     console.error(error);
     sendJson(res, 500, { error: 'Falha ao servir arquivo.' });
   }
+}
+
+function localNetworkUrls(port) {
+  const urls = [];
+  for (const entries of Object.values(networkInterfaces())) {
+    for (const entry of entries || []) {
+      if (entry.family !== 'IPv4' || entry.internal) continue;
+      urls.push(`http://${entry.address}:${port}`);
+    }
+  }
+  return [...new Set(urls)];
 }
 
 const server = http.createServer(async (req, res) => {
@@ -240,15 +254,20 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, '0.0.0.0', () => {
   const state = providerState();
-  console.log(`Mockup Vision Studio em http://localhost:${PORT}`);
+  console.log('\nMockup Vision Studio');
+  console.log(`Local: http://localhost:${PORT}`);
+  const networkUrls = localNetworkUrls(PORT);
+  if (networkUrls.length) networkUrls.forEach((url) => console.log(`Rede:  ${url}`));
+  else console.log('Rede:  nenhum endereço IPv4 externo encontrado neste ambiente.');
+
   if (state.provider === 'cloudflare') {
-    console.log(`Gerador Cloudflare configurado (${cloudflareModel()}).`);
-    console.log(`Gerador com referências configurado (${cloudflareReferenceModel()}).`);
-    console.log(`Editor direto de mockup configurado (${mockupEditModel()}).`);
-    console.log(`Visão universal configurada (${visionModel()}).`);
+    console.log(`\nCloudflare configurado (${cloudflareModel()}).`);
+    console.log(`Referências de cena: ${cloudflareReferenceModel()}.`);
+    console.log(`Editor de mockup: ${mockupEditModel()}.`);
+    console.log(`Visão universal: ${visionModel()}.`);
   } else if (state.provider === 'openai') {
-    console.log('Gerador OpenAI configurado como fallback.');
+    console.log('\nProvider alternativo configurado.');
   } else {
-    console.log('Gerador não configurado. Defina CLOUDFLARE_ACCOUNT_ID e CLOUDFLARE_API_TOKEN.');
+    console.log('\nRenderização não configurada. Defina CLOUDFLARE_ACCOUNT_ID e CLOUDFLARE_API_TOKEN.');
   }
 });
