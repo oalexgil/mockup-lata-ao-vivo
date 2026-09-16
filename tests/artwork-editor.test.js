@@ -36,7 +36,8 @@ test('artwork store is non-destructive and resettable', () => {
 });
 
 test('effective opacity combines opacity and transparency', () => {
-  assert.equal(effectiveArtworkOpacity({ opacity: 0.8, transparency: 0.25 }), 0.6);
+  const value = effectiveArtworkOpacity({ opacity: 0.8, transparency: 0.25 });
+  assert.ok(Math.abs(value - 0.6) < Number.EPSILON * 4);
 });
 
 test('fit rect preserves source ratio and honors safe margin', () => {
