@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { timingSafeEqual } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import { networkInterfaces } from 'node:os';
 import path from 'node:path';
@@ -25,6 +26,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const PORT = Number(process.env.PORT || 8000);
 const MAX_BODY = 20 * 1024 * 1024;
+const AI_RATE_LIMIT_PER_HOUR = Math.max(1, Number(process.env.AI_RATE_LIMIT_PER_HOUR || 60));
+const RATE_WINDOW_MS = 60 * 60 * 1000;
+const requestBuckets = new Map();
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -68,12 +72,92 @@ async function generateWithConfiguredProvider(body) {
   throw error;
 }
 
-function sendJson(res, status, payload) {
+function sendJson(res, status, payload, headers = {}) {
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
+    ...headers,
   });
   res.end(JSON.stringify(payload));
+}
+
+function secureEqual(a, b) {
+  const left = Buffer.from(String(a));
+  const right = Buffer.from(String(b));
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
+}
+
+function basicAuthConfigured(env = process.env) {
+  return Boolean(env.STUDIO_BASIC_USER && env.STUDIO_BASIC_PASS);
+}
+
+function requestAuthorized(req, env = process.env) {
+  if (!basicAuthConfigured(env)) return true;
+  const header = String(req.headers.authorization || '');
+  if (!header.startsWith('Basic ')) return false;
+  try {
+    const decoded = Buffer.from(header.slice(6), 'base64').toString('utf8');
+    const separator = decoded.indexOf(':');
+    if (separator < 0) return false;
+    const user = decoded.slice(0, separator);
+    const pass = decoded.slice(separator + 1);
+    return secureEqual(user, env.STUDIO_BASIC_USER) && secureEqual(pass, env.STUDIO_BASIC_PASS);
+  } catch {
+    return false;
+  }
+}
+
+function requireAuthorization(req, res) {
+  if (requestAuthorized(req)) return true;
+  sendJson(res, 401, { error: 'Acesso restrito ao Mockup Vision Studio.' }, {
+    'WWW-Authenticate': 'Basic realm="Mockup Vision Studio", charset="UTF-8"',
+  });
+  return false;
+}
+
+function clientAddress(req) {
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return forwarded || req.socket.remoteAddress || 'unknown';
+}
+
+function consumeAiQuota(req) {
+  const now = Date.now();
+  const key = clientAddress(req);
+  const previous = requestBuckets.get(key);
+  const bucket = !previous || now - previous.startedAt >= RATE_WINDOW_MS
+    ? { startedAt: now, count: 0 }
+    : previous;
+  bucket.count += 1;
+  requestBuckets.set(key, bucket);
+
+  if (requestBuckets.size > 500) {
+    for (const [address, value] of requestBuckets) {
+      if (now - value.startedAt >= RATE_WINDOW_MS) requestBuckets.delete(address);
+    }
+  }
+
+  return {
+    allowed: bucket.count <= AI_RATE_LIMIT_PER_HOUR,
+    limit: AI_RATE_LIMIT_PER_HOUR,
+    remaining: Math.max(0, AI_RATE_LIMIT_PER_HOUR - bucket.count),
+    resetAt: bucket.startedAt + RATE_WINDOW_MS,
+  };
+}
+
+function enforceAiRateLimit(req, res) {
+  const quota = consumeAiQuota(req);
+  if (quota.allowed) return true;
+  const retryAfter = Math.max(1, Math.ceil((quota.resetAt - Date.now()) / 1000));
+  sendJson(res, 429, {
+    error: 'Limite temporário desta versão de teste atingido. Tente novamente mais tarde.',
+  }, {
+    'Retry-After': String(retryAfter),
+    'X-RateLimit-Limit': String(quota.limit),
+    'X-RateLimit-Remaining': '0',
+  });
+  return false;
 }
 
 async function readJson(req) {
@@ -142,6 +226,8 @@ async function serveStatic(req, res) {
       'Cache-Control': ext === '.html' || ext === '.js' ? 'no-store' : 'public, max-age=3600',
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'no-referrer',
+      'X-Frame-Options': 'DENY',
+      'Permissions-Policy': 'camera=(self), microphone=(), geolocation=()',
     });
     if (req.method === 'HEAD') return res.end();
     res.end(data);
@@ -165,6 +251,12 @@ function localNetworkUrls(port) {
 
 const server = http.createServer(async (req, res) => {
   try {
+    if (['GET', 'HEAD'].includes(req.method || '') && req.url?.startsWith('/healthz')) {
+      return sendJson(res, 200, { ok: true });
+    }
+
+    if (!requireAuthorization(req, res)) return;
+
     if (req.method === 'GET' && req.url?.startsWith('/api/health')) {
       const state = providerState();
       return sendJson(res, 200, {
@@ -208,6 +300,10 @@ const server = http.createServer(async (req, res) => {
           ],
         },
       });
+    }
+
+    if (req.method === 'POST' && req.url?.startsWith('/api/')) {
+      if (!enforceAiRateLimit(req, res)) return;
     }
 
     if (req.method === 'POST' && req.url?.startsWith('/api/generate-scene')) {
@@ -259,6 +355,8 @@ server.listen(PORT, '0.0.0.0', () => {
   const networkUrls = localNetworkUrls(PORT);
   if (networkUrls.length) networkUrls.forEach((url) => console.log(`Rede:  ${url}`));
   else console.log('Rede:  nenhum endereço IPv4 externo encontrado neste ambiente.');
+  if (basicAuthConfigured()) console.log('Acesso público protegido por autenticação básica.');
+  console.log(`Limite de API: ${AI_RATE_LIMIT_PER_HOUR} chamadas por IP/hora.`);
 
   if (state.provider === 'cloudflare') {
     console.log(`\nCloudflare configurado (${cloudflareModel()}).`);
