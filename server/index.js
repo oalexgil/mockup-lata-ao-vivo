@@ -261,6 +261,17 @@ function consumeSceneDailyQuota(req) {
   };
 }
 
+function refundSceneDailyQuota(req) {
+  const day = utcDayKey();
+  const userKey = `${day}:${clientAddress(req)}`;
+  const globalKey = `${day}:__global__`;
+  for (const key of [userKey, globalKey]) {
+    const count = sceneDailyBuckets.get(key) || 0;
+    if (count > 1) sceneDailyBuckets.set(key, count - 1);
+    else sceneDailyBuckets.delete(key);
+  }
+}
+
 function enforceSceneDailyQuota(req, res) {
   const quota = consumeSceneDailyQuota(req);
   if (quota.allowed) return quota;
@@ -399,7 +410,9 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { ok: true });
     }
 
-    if (!requireAuthorization(req, res)) return;
+    const publicLandingRequest = ['GET', 'HEAD'].includes(req.method || '')
+      && (req.url === '/' || req.url?.startsWith('/index.html') || req.url?.startsWith('/api/commercial'));
+    if (!publicLandingRequest && !requireAuthorization(req, res)) return;
 
     if (req.method === 'GET' && req.url?.startsWith('/api/commercial')) {
       return sendJson(res, 200, commercialConfig());
@@ -470,7 +483,13 @@ const server = http.createServer(async (req, res) => {
       const sceneQuota = enforceSceneDailyQuota(req, res);
       if (!sceneQuota) return;
       const body = await readJson(req);
-      const result = await generateWithConfiguredProvider(body);
+      let result;
+      try {
+        result = await generateWithConfiguredProvider(body);
+      } catch (error) {
+        refundSceneDailyQuota(req);
+        throw error;
+      }
       return sendJson(res, 200, {
         ...result,
         quota: {
