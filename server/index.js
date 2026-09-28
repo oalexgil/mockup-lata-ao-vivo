@@ -6,6 +6,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { generateScene as generateOpenAIScene } from './openai-provider.js';
 import {
+  generateScene as generatePollinationsScene,
+  pollinationsCanHandle,
+  pollinationsConfigured,
+  pollinationsModel,
+} from './pollinations-provider.js';
+import {
   cloudflareConfigured,
   cloudflareModel,
   cloudflareReferenceModel,
@@ -29,6 +35,9 @@ const MAX_BODY = 20 * 1024 * 1024;
 const AI_RATE_LIMIT_PER_HOUR = Math.max(1, Number(process.env.AI_RATE_LIMIT_PER_HOUR || 60));
 const RATE_WINDOW_MS = 60 * 60 * 1000;
 const requestBuckets = new Map();
+const sceneDailyBuckets = new Map();
+const FREE_SCENE_GENERATIONS_PER_DAY = Math.max(0, Number(process.env.FREE_SCENE_GENERATIONS_PER_DAY || 3));
+const SCENE_GLOBAL_DAILY_LIMIT = Math.max(0, Number(process.env.SCENE_GLOBAL_DAILY_LIMIT || 120));
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -44,31 +53,77 @@ const MIME = {
   '.ico': 'image/x-icon',
 };
 
-function providerState(env = process.env) {
-  const preferred = String(env.IMAGE_PROVIDER || 'cloudflare').trim().toLowerCase();
-  const cloudflare = cloudflareConfigured(env);
-  const openai = Boolean(env.OPENAI_API_KEY);
+function providerOrder(env = process.env) {
+  const requested = String(env.IMAGE_PROVIDER_ORDER || env.IMAGE_PROVIDER || 'cloudflare,pollinations,openai')
+    .split(',')
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+  return [...new Set([...requested, 'cloudflare', 'pollinations', 'openai'])];
+}
 
-  if (preferred === 'openai' && openai) {
-    return { provider: 'openai', configured: true, preferred, cloudflare, openai };
-  }
-  if (preferred === 'cloudflare' && cloudflare) {
-    return { provider: 'cloudflare', configured: true, preferred, cloudflare, openai };
-  }
-  if (cloudflare) return { provider: 'cloudflare', configured: true, preferred, cloudflare, openai };
-  if (openai) return { provider: 'openai', configured: true, preferred, cloudflare, openai };
-  return { provider: null, configured: false, preferred, cloudflare, openai };
+function providerState(env = process.env) {
+  const available = {
+    cloudflare: cloudflareConfigured(env),
+    pollinations: pollinationsConfigured(env),
+    openai: Boolean(env.OPENAI_API_KEY),
+  };
+  const order = providerOrder(env);
+  const provider = order.find((name) => available[name]) || null;
+  return {
+    provider,
+    configured: Boolean(provider),
+    preferred: order[0] || 'cloudflare',
+    order,
+    ...available,
+  };
+}
+
+function providerSupportsBody(provider, body) {
+  if (provider === 'pollinations') return pollinationsCanHandle(body);
+  return true;
+}
+
+function retryableProviderError(error) {
+  const status = Number(error?.statusCode) || 500;
+  return status === 402 || status === 403 || status === 408 || status === 409 || status === 429 || status >= 500;
+}
+
+async function callSceneProvider(provider, body) {
+  if (provider === 'cloudflare') return generateCloudflareScene(body);
+  if (provider === 'pollinations') return generatePollinationsScene(body);
+  if (provider === 'openai') return generateOpenAIScene(body);
+  const error = new Error(`Provider desconhecido: ${provider}`);
+  error.statusCode = 500;
+  throw error;
 }
 
 async function generateWithConfiguredProvider(body) {
   const state = providerState();
-  if (state.provider === 'cloudflare') return generateCloudflareScene(body);
-  if (state.provider === 'openai') return generateOpenAIScene(body);
+  const available = state.order.filter((name) => state[name] && providerSupportsBody(name, body));
+  if (!available.length) {
+    const error = new Error(
+      'Nenhum gerador compatível está configurado. Você ainda pode importar uma foto ou cena existente e usar o Mockup Vision sem geração.'
+    );
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const failures = [];
+  for (const provider of available) {
+    try {
+      const result = await callSceneProvider(provider, body);
+      return { ...result, providerChain: available, fallbacksUsed: failures.map((item) => item.provider) };
+    } catch (error) {
+      failures.push({ provider, message: error?.message || 'Falha do provider', status: Number(error?.statusCode) || 500 });
+      if (!retryableProviderError(error)) throw error;
+    }
+  }
 
   const error = new Error(
-    'Nenhum gerador configurado. Para o modo gratuito, defina CLOUDFLARE_ACCOUNT_ID e CLOUDFLARE_API_TOKEN.'
+    `Os geradores integrados estão temporariamente indisponíveis. Importe uma cena para continuar sem consumir créditos. ${failures.map((item) => `${item.provider}: ${item.status}`).join(' · ')}`
   );
-  error.statusCode = 503;
+  error.statusCode = failures.some((item) => item.status === 429) ? 429 : 503;
+  error.providerFailures = failures;
   throw error;
 }
 
@@ -158,6 +213,106 @@ function enforceAiRateLimit(req, res) {
     'X-RateLimit-Remaining': '0',
   });
   return false;
+}
+
+function utcDayKey(now = new Date()) {
+  return now.toISOString().slice(0, 10);
+}
+
+function consumeSceneDailyQuota(req) {
+  if (FREE_SCENE_GENERATIONS_PER_DAY === 0 && SCENE_GLOBAL_DAILY_LIMIT === 0) {
+    return { allowed: true, userRemaining: null, globalRemaining: null, resetAt: null };
+  }
+
+  const day = utcDayKey();
+  const userKey = `${day}:${clientAddress(req)}`;
+  const globalKey = `${day}:__global__`;
+  const userCount = sceneDailyBuckets.get(userKey) || 0;
+  const globalCount = sceneDailyBuckets.get(globalKey) || 0;
+
+  const userAllowed = FREE_SCENE_GENERATIONS_PER_DAY === 0 || userCount < FREE_SCENE_GENERATIONS_PER_DAY;
+  const globalAllowed = SCENE_GLOBAL_DAILY_LIMIT === 0 || globalCount < SCENE_GLOBAL_DAILY_LIMIT;
+  const nextReset = Date.parse(`${day}T00:00:00.000Z`) + 24 * 60 * 60 * 1000;
+
+  if (!userAllowed || !globalAllowed) {
+    return {
+      allowed: false,
+      reason: !userAllowed ? 'user' : 'global',
+      userRemaining: FREE_SCENE_GENERATIONS_PER_DAY === 0 ? null : Math.max(0, FREE_SCENE_GENERATIONS_PER_DAY - userCount),
+      globalRemaining: SCENE_GLOBAL_DAILY_LIMIT === 0 ? null : Math.max(0, SCENE_GLOBAL_DAILY_LIMIT - globalCount),
+      resetAt: nextReset,
+    };
+  }
+
+  sceneDailyBuckets.set(userKey, userCount + 1);
+  sceneDailyBuckets.set(globalKey, globalCount + 1);
+
+  if (sceneDailyBuckets.size > 2000) {
+    for (const key of sceneDailyBuckets.keys()) {
+      if (!key.startsWith(`${day}:`)) sceneDailyBuckets.delete(key);
+    }
+  }
+
+  return {
+    allowed: true,
+    userRemaining: FREE_SCENE_GENERATIONS_PER_DAY === 0 ? null : Math.max(0, FREE_SCENE_GENERATIONS_PER_DAY - userCount - 1),
+    globalRemaining: SCENE_GLOBAL_DAILY_LIMIT === 0 ? null : Math.max(0, SCENE_GLOBAL_DAILY_LIMIT - globalCount - 1),
+    resetAt: nextReset,
+  };
+}
+
+function refundSceneDailyQuota(req) {
+  const day = utcDayKey();
+  const userKey = `${day}:${clientAddress(req)}`;
+  const globalKey = `${day}:__global__`;
+  for (const key of [userKey, globalKey]) {
+    const count = sceneDailyBuckets.get(key) || 0;
+    if (count > 1) sceneDailyBuckets.set(key, count - 1);
+    else sceneDailyBuckets.delete(key);
+  }
+}
+
+function enforceSceneDailyQuota(req, res) {
+  const quota = consumeSceneDailyQuota(req);
+  if (quota.allowed) return quota;
+
+  const retryAfter = quota.resetAt ? Math.max(1, Math.ceil((quota.resetAt - Date.now()) / 1000)) : 3600;
+  sendJson(res, 429, {
+    error: quota.reason === 'user'
+      ? 'Sua cota gratuita de geração de cenas terminou hoje. Importe uma foto/cena e continue usando o Studio sem geração.'
+      : 'A cota diária de geração desta beta foi atingida. Importe uma foto/cena e continue usando o Studio normalmente.',
+    code: quota.reason === 'user' ? 'FREE_SCENE_DAILY_LIMIT' : 'BETA_SCENE_DAILY_LIMIT',
+    resetAt: quota.resetAt ? new Date(quota.resetAt).toISOString() : null,
+    manualImportAvailable: true,
+  }, {
+    'Retry-After': String(retryAfter),
+    'X-Scene-Quota-Limit': String(FREE_SCENE_GENERATIONS_PER_DAY),
+    'X-Scene-Quota-Remaining': '0',
+  });
+  return null;
+}
+
+function commercialConfig(env = process.env) {
+  const price = Math.max(0, Number(env.BETA_CREATOR_PRICE_BRL || 29));
+  const checkoutUrl = String(env.BETA_CHECKOUT_URL || '').trim();
+  const waitlistUrl = String(env.BETA_WAITLIST_URL || '').trim();
+  return {
+    beta: true,
+    free: {
+      priceBrl: 0,
+      sceneGenerationsPerDay: FREE_SCENE_GENERATIONS_PER_DAY,
+      manualSceneImport: true,
+      localArtworkComposition: true,
+    },
+    creator: {
+      priceBrl: price,
+      billingPeriod: 'month',
+      checkoutConfigured: /^https:\/\//i.test(checkoutUrl),
+      checkoutUrl: /^https:\/\//i.test(checkoutUrl) ? checkoutUrl : null,
+      waitlistUrl: /^https:\/\//i.test(waitlistUrl) ? waitlistUrl : null,
+      positioning: 'beta-price-test',
+    },
+  };
 }
 
 async function readJson(req) {
@@ -255,7 +410,13 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { ok: true });
     }
 
-    if (!requireAuthorization(req, res)) return;
+    const publicLandingRequest = ['GET', 'HEAD'].includes(req.method || '')
+      && (req.url === '/' || req.url?.startsWith('/index.html') || req.url?.startsWith('/api/commercial'));
+    if (!publicLandingRequest && !requireAuthorization(req, res)) return;
+
+    if (req.method === 'GET' && req.url?.startsWith('/api/commercial')) {
+      return sendJson(res, 200, commercialConfig());
+    }
 
     if (req.method === 'GET' && req.url?.startsWith('/api/health')) {
       const state = providerState();
@@ -266,9 +427,21 @@ const server = http.createServer(async (req, res) => {
         preferredProvider: state.preferred,
         providers: {
           cloudflare: state.cloudflare,
+          pollinations: state.pollinations,
           openai: state.openai,
         },
-        model: state.provider === 'cloudflare' ? cloudflareModel() : null,
+        providerOrder: state.order,
+        generationResilience: {
+          manualImport: true,
+          freeSceneGenerationsPerDay: FREE_SCENE_GENERATIONS_PER_DAY,
+          globalSceneDailyLimit: SCENE_GLOBAL_DAILY_LIMIT,
+          pollinationsModel: state.pollinations ? pollinationsModel() : null,
+        },
+        model: state.provider === 'cloudflare'
+          ? cloudflareModel()
+          : state.provider === 'pollinations'
+            ? pollinationsModel()
+            : null,
         sceneReferences: {
           configured: state.cloudflare,
           model: state.cloudflare ? cloudflareReferenceModel() : null,
@@ -307,9 +480,26 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === 'POST' && req.url?.startsWith('/api/generate-scene')) {
+      const sceneQuota = enforceSceneDailyQuota(req, res);
+      if (!sceneQuota) return;
       const body = await readJson(req);
-      const result = await generateWithConfiguredProvider(body);
-      return sendJson(res, 200, result);
+      let result;
+      try {
+        result = await generateWithConfiguredProvider(body);
+      } catch (error) {
+        refundSceneDailyQuota(req);
+        throw error;
+      }
+      return sendJson(res, 200, {
+        ...result,
+        quota: {
+          userRemaining: sceneQuota.userRemaining,
+          resetAt: sceneQuota.resetAt ? new Date(sceneQuota.resetAt).toISOString() : null,
+        },
+      }, {
+        'X-Scene-Quota-Limit': String(FREE_SCENE_GENERATIONS_PER_DAY),
+        'X-Scene-Quota-Remaining': sceneQuota.userRemaining === null ? 'unlimited' : String(sceneQuota.userRemaining),
+      });
     }
 
     if (req.method === 'POST' && req.url?.startsWith('/api/render-mockup')) {
@@ -357,15 +547,18 @@ server.listen(PORT, '0.0.0.0', () => {
   else console.log('Rede:  nenhum endereço IPv4 externo encontrado neste ambiente.');
   if (basicAuthConfigured()) console.log('Acesso público protegido por autenticação básica.');
   console.log(`Limite de API: ${AI_RATE_LIMIT_PER_HOUR} chamadas por IP/hora.`);
+  console.log(`Cota de cena beta: ${FREE_SCENE_GENERATIONS_PER_DAY || 'ilimitada'} por IP/dia; teto global ${SCENE_GLOBAL_DAILY_LIMIT || 'desativado'}.`);
 
   if (state.provider === 'cloudflare') {
     console.log(`\nCloudflare configurado (${cloudflareModel()}).`);
     console.log(`Referências de cena: ${cloudflareReferenceModel()}.`);
     console.log(`Editor de mockup: ${mockupEditModel()}.`);
     console.log(`Visão universal: ${visionModel()}.`);
+  } else if (state.provider === 'pollinations') {
+    console.log(`\nFallback Pollinations configurado (${pollinationsModel()}).`);
   } else if (state.provider === 'openai') {
-    console.log('\nProvider alternativo configurado.');
+    console.log('\nProvider OpenAI alternativo configurado.');
   } else {
-    console.log('\nRenderização não configurada. Defina CLOUDFLARE_ACCOUNT_ID e CLOUDFLARE_API_TOKEN.');
+    console.log('\nGeração integrada não configurada. O fluxo de importação manual continua disponível.');
   }
 });

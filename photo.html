@@ -20,8 +20,8 @@ input[type=file]{display:none}.asset-list{display:grid;gap:6px;margin-top:8px}.a
 <body>
 <div class="app">
 <aside class="rail">
-  <div class="brand"><h1>Mockup Vision</h1><a href="cylinder-lab.html">Cylinder Lab</a></div>
-  <p class="sub">Descreva. Gere. Aplique sua marca.</p>
+  <div class="brand"><h1>Mockup Vision</h1><span><a href="index.html">← Sobre / planos</a> · <a href="cylinder-lab.html">Cylinder Lab</a></span></div>
+  <p class="sub">Sua arte original. Em qualquer cena. Sem redesenhar sua marca.</p>
 
   <div class="progress">
     <div id="progress1" class="active">1 · Brief</div>
@@ -54,8 +54,8 @@ input[type=file]{display:none}.asset-list{display:grid;gap:6px;margin-top:8px}.a
       <label class="caption">Cena / inspiração / estilo de referência</label>
       <label class="filebtn" for="sceneRefs">+ Adicionar imagens</label>
       <input id="sceneRefs" type="file" accept="image/*" multiple>
-      <button id="generateBtn" class="primary" style="margin-top:11px">Gerar imagem</button>
-      <div id="generateStatus" class="status">Escreva um pedido ou envie imagens de referência.</div>
+      <button id="generateBtn" class="primary" style="margin-top:11px">Gerar cena com IA</button>
+      <div id="generateStatus" class="status">A beta inclui uma cota curta de geração. Importar sua própria cena não consome cota.</div>
 
       <div id="versions" class="versions"></div>
       <div id="iterationBox" class="hidden" style="margin-top:10px">
@@ -63,16 +63,17 @@ input[type=file]{display:none}.asset-list{display:grid;gap:6px;margin-top:8px}.a
         <button id="iterateBtn" class="secondary">Gerar nova versão</button>
       </div>
 
-      <div id="fallbackBox" class="hidden" style="margin-top:10px">
-        <p class="hint">Enquanto o provedor de geração não estiver conectado neste ambiente, você pode gerar externamente e continuar daqui.</p>
-        <label class="filebtn" for="generatedFallback">Importar imagem gerada</label>
+      <div id="fallbackBox" style="margin-top:10px">
+        <p class="hint"><strong style="color:var(--ink)">Sem gastar geração:</strong> traga uma cena criada em qualquer ferramenta e continue daqui.</p>
+        <label class="filebtn" for="generatedFallback">Importar cena gerada externamente</label>
         <input id="generatedFallback" type="file" accept="image/*">
       </div>
 
-      <details style="margin-top:10px"><summary class="tiny">Ou usar uma foto existente</summary>
-        <label class="filebtn" for="photoFile" style="margin-top:8px">Carregar foto / mockup existente</label>
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">
+        <label class="caption" style="margin-top:0">Ou use uma foto / mockup que você já tem</label>
+        <label class="filebtn" for="photoFile">Carregar foto existente — sem cota</label>
         <input id="photoFile" type="file" accept="image/*">
-      </details>
+      </div>
     </div>
   </section>
 
@@ -126,7 +127,7 @@ input[type=file]{display:none}.asset-list{display:grid;gap:6px;margin-top:8px}.a
 
 <main class="stage">
   <canvas id="display"></canvas>
-  <div id="empty" class="empty"><strong>Seu mockup começa aqui</strong>Descreva a cena ou envie uma referência. Depois o Mockup Vision aplica suas artes nas áreas detectadas.</div>
+  <div id="empty" class="empty"><strong>Comece com uma cena</strong>Gere com a cota da beta ou carregue uma foto existente. A arte final continua sendo composta a partir dos seus pixels originais.</div>
   <div id="canvasHint" class="canvas-hint hidden">arraste os cantos da área selecionada</div>
 </main>
 </div>

@@ -1,259 +1,187 @@
 # Mockup Vision
 
-**Create the scene. Map the surfaces. Apply the original artwork.**
+**AI creates the scene. Your artwork stays yours.**
 
-Mockup Vision is a guided AI mockup studio. It separates scene generation from final brand application so generative AI can create the product, composition and lighting while the user's real logo, label or artwork remains the source of truth.
+Mockup Vision is a fidelity-first mockup studio. It can generate or import a scene, identify usable surfaces and then apply the user's original logo, label or artwork without asking a generative model to redraw the brand asset.
 
-> **Status:** functional V2.1 prototype. Cloudflare Workers AI is the default scene-generation provider. The Studio now adds universal AI surface mapping, numbered guides, one-to-one artwork mapping and AI-assisted finishing without asking the model to redraw brand artwork.
+> **Status:** commercial beta experiment on top of the functional V2.1 prototype.
+
+## The product invariant
+
+> Uploaded artwork is never treated as generative content.
+
+The final composition may transform perspective, scale, rotation, surface deformation, light, shadow and conservative material integration. It must not rewrite:
+
+- wording;
+- typography;
+- logos;
+- colors inside the artwork;
+- illustrations;
+- the internal composition of the uploaded asset.
+
+That distinction is the product.
+
+## Commercial beta
+
+The beta deliberately separates the useful core from paid inference.
+
+### Free
+
+- import an existing photo or generated scene;
+- map one or many surfaces;
+- apply one or many original artwork files;
+- adjust geometry and integration;
+- export PNG;
+- a small configurable daily allowance of integrated scene generations.
+
+Manual scene import does **not** consume a generation allowance.
+
+### Creator Beta
+
+The landing page currently exposes a **R$29/month price hypothesis** through `BETA_CREATOR_PRICE_BRL`.
+
+A real paid CTA only activates when `BETA_CHECKOUT_URL` is configured. Until then, the UI explicitly says checkout is not connected. This lets the project test positioning and willingness-to-pay without pretending that billing or entitlements already exist.
+
+See [docs/COMMERCIAL_BETA.md](docs/COMMERCIAL_BETA.md).
+
+## Generation resilience
+
+Scene generation is optional infrastructure, not a single point of product failure.
+
+Default order:
+
+```text
+Cloudflare Workers AI
+        ↓ retryable failure
+Pollinations (optional experimental fallback, text-only in this beta)
+        ↓ retryable failure
+OpenAI (optional)
+        ↓
+Manual image import — always available
+```
+
+Configure the order with:
+
+```env
+IMAGE_PROVIDER_ORDER=cloudflare,pollinations,openai
+```
+
+### Why Cloudflare remains first
+
+Workers AI currently includes a daily free allocation and FLUX.1 Schnell is among the lowest-cost image models in its catalog. The beta adds an application-level per-user scene allowance and a conservative global scene ceiling so the product can validate demand before taking on open-ended inference cost.
+
+The application limits are operational guards, not a billing system. They are stored in memory and reset on process restart.
+
+### Pollinations
+
+Pollinations is optional. The beta adapter accepts a server-side `POLLINATIONS_API_KEY` and only handles text-only scene generation. Reference-image and iterative workflows remain on Cloudflare or the manual-import path.
+
+Do not expose secret provider keys in browser code.
 
 ## Product flow
 
 ```text
-1. Describe the mockup
+1. Generate a scene OR import one
         ↓
-2. Generate the empty scene
+2. Approve the scene
         ↓
-3. Iterate or approve the scene
+3. Upload one or many original artworks
         ↓
-4. Upload one or many artworks
+4. Identify usable surfaces
         ↓
-5. AI identifies usable surfaces
+5. Map artwork ↔ surface
         ↓
-6. Numbered guides map artwork ↔ surface
+6. Adjust geometry / conservative finishing
         ↓
-7. AI recommends lighting/material integration
+7. Browser renderer applies original pixels
         ↓
-8. Browser renderer applies original artwork
-        ↓
-9. Export PNG
+8. Export PNG
 ```
 
-## Immutable artwork rule
+## Provider-independent failure path
 
-This is a product invariant:
+If every configured generator is unavailable or the free beta allowance is exhausted, the Studio tells the user to import a scene. Mapping, manual correction, artwork placement and export remain usable.
 
-> **The uploaded artwork is never treated as generative content.**
-
-Mockup Vision must not ask an image model to rewrite:
-
-- colors;
-- letters or wording;
-- typography;
-- logos;
-- illustrations;
-- drawings;
-- internal artwork composition.
-
-Allowed changes are only those required to place the original asset on a photographed surface:
-
-- perspective;
-- scale and rotation;
-- surface deformation;
-- lighting and shadow integration;
-- reflection/material integration;
-- conservative opacity/blend adjustments.
-
-The AI analyzes geometry and finishing. The browser renderer applies the original uploaded pixels.
-
-## Cloudflare-first generation
-
-The Studio calls:
-
-```text
-POST /api/generate-scene
-```
-
-Provider priority is:
-
-```text
-Cloudflare Workers AI
-        ↓ fallback
-OpenAI (optional)
-        ↓ fallback
-Manual image import
-```
-
-Default scene model:
-
-```text
-@cf/black-forest-labs/flux-1-schnell
-```
-
-Secrets remain server-side. Nothing is written to browser JavaScript or `localStorage`.
-
-Setup: [docs/CLOUDFLARE_SETUP.md](docs/CLOUDFLARE_SETUP.md)
+This is intentional: the value proposition is artwork fidelity, not subsidized image generation.
 
 ## Universal surface mapping
 
-After the user approves a scene and uploads artwork, the Studio calls:
+The Studio uses:
 
 ```text
 POST /api/analyze-layout
 ```
 
-Cloudflare Vision analyzes the whole mockup without assuming a particular object category. It returns one or more normalized four-point surfaces:
+to detect generic surfaces instead of hard-coded object categories. A surface can be a screen, package face, poster, notebook cover, sign, cup area or other printable/display region.
 
-```json
-{
-  "slots": [
-    {
-      "index": 1,
-      "label": "front printable surface",
-      "quad": [
-        { "x": 0.31, "y": 0.28 },
-        { "x": 0.66, "y": 0.30 },
-        { "x": 0.63, "y": 0.69 },
-        { "x": 0.34, "y": 0.68 }
-      ]
-    }
-  ]
-}
+AI geometry is advisory. Manual correction remains available.
+
+## Commercial endpoints
+
+- `GET /api/commercial` — public beta plan/price configuration;
+- `GET /api/health` — provider availability and generation-resilience status;
+- `POST /api/generate-scene` — resilient provider chain + beta scene quota;
+- `POST /api/analyze-layout` — surface analysis;
+- `POST /api/refine-plan` — conservative integration recommendations.
+
+## Configuration
+
+Copy `.env.example`.
+
+Core beta controls:
+
+```env
+FREE_SCENE_GENERATIONS_PER_DAY=3
+SCENE_GLOBAL_DAILY_LIMIT=120
+BETA_CREATOR_PRICE_BRL=29
+BETA_CHECKOUT_URL=
+BETA_WAITLIST_URL=
 ```
 
-The Studio draws numbered guides and maps artwork 1 → area 1, artwork 2 → area 2, and so on.
-
-The mapping is generic: cup, box, notebook, poster, package, flyer, sign, screen and multi-piece presentation are all treated as surfaces rather than hard-coded product types.
-
-## AI-assisted finishing
-
-After mapping, the user clicks **Finalizar com IA**.
-
-The Studio sends a preview with numbered slots to:
-
-```text
-POST /api/refine-plan
-```
-
-The vision model may recommend only conservative integration values such as:
-
-- preserve scene light;
-- brightness;
-- contrast;
-- saturation;
-- opacity;
-- blend mode.
-
-Those recommendations are normalized and clamped before use. The model does **not** receive permission to rewrite the artwork itself.
-
-The final image is then composed locally from:
-
-```text
-approved scene
-+ original uploaded artwork files
-+ AI surface geometry
-+ conservative integration plan
-```
-
-This design is intentionally different from asking a generative image model to redraw a label inside a photo.
-
-## Multiple artworks
-
-One or many artwork files can be uploaded in the same session.
-
-A **slot** represents one surface and contains:
-
-- normalized four-corner geometry;
-- a numbered visual guide;
-- an assigned artwork index;
-- confidence/label metadata;
-- an optional finishing plan.
-
-If the number of artworks and detected surfaces differs, the interface explains which assets have a surface and which do not.
-
-## Existing mockups
-
-The Studio can also start from an existing photo instead of an AI-generated scene. The same universal surface-mapping and immutable-artwork rules apply.
-
-The original legacy editor still contains manual four-corner tools and replacement controls, but the guided flow now prioritizes AI surface mapping and deterministic artwork rendering.
-
-## Current V2.1 files
-
-```text
-photo.html                        # guided Studio UI
-studio-app.js                     # preserved editor/rendering engine
-studio-ux.js                      # approval and progressive UX
-studio-universal.js               # universal AI mapping + immutable artwork layer
-studio-api-monitor.js             # visible backend error reporting
-
-src/studio-core.js                # slot/version helpers
-src/studio-flow.js                # approval → mapping → finalization state machine
-src/universal-mockup.js           # universal slots + fidelity policy + plan normalization
-src/scene-brief.js                # brand-safe scene prompt normalization
-src/planar-core.js                # planar geometry helpers
-
-server/index.js                   # Studio server + API routing
-server/cloudflare-provider.js     # Cloudflare scene-generation adapter
-server/vision-provider.js         # universal layout + finishing analysis
-server/openai-provider.js         # optional OpenAI fallback
-
-tests/studio-flow.test.js
-tests/universal-mockup.test.js
-```
-
-## Cylinder Lab
-
-The original can/cylinder experiment remains in `index.html` and is intentionally preserved as a separate research lab.
-
-The main Studio no longer assumes cylindrical geometry. Cylinder-specific work can return later as an optional specialized engine rather than as the universal default.
+Provider secrets remain server-side.
 
 ## Development
-
-Run:
 
 ```bash
 npm start
 ```
 
-Open:
+Landing:
 
 ```text
 http://localhost:8000/
 ```
 
-Repository checks:
+Studio:
+
+```text
+http://localhost:8000/photo.html
+```
+
+Checks:
 
 ```bash
 npm run ci
 ```
 
-## Privacy and security
+## Current boundaries
 
-Provider secrets stay on the server. Never commit Cloudflare or OpenAI credentials.
+- the beta quota is an in-memory guard, not a subscription entitlement system;
+- paid user accounts are not implemented yet;
+- Pollinations fallback is text-only in this branch;
+- Cloudflare reference generation may use a different model from text-only scene generation;
+- surface geometry remains probabilistic and requires real-world validation;
+- occlusion-aware masking is not complete;
+- iteration quality still depends on provider capability;
+- the original artwork fidelity rule takes precedence over aggressive generative editing.
 
-The browser keeps the original artwork files locally and performs the final deterministic composition in the client. The vision request receives the mockup preview needed to identify geometry and finishing recommendations.
+## Next validation
 
-See [SECURITY.md](SECURITY.md) and [docs/CLOUDFLARE_SETUP.md](docs/CLOUDFLARE_SETUP.md).
+The commercial experiment should answer three questions before adding account/billing complexity:
 
-## Current limitations
-
-- Cloudflare scene iteration still regenerates from text rather than preserving the previous image exactly;
-- AI surface geometry is probabilistic and still needs real-world validation across many mockup categories;
-- occlusion-aware masking is not implemented yet;
-- automatic reflection generation is conservative rather than physically simulated;
-- the universal finishing pass adjusts rendering parameters, not brand pixels;
-- visual regression fixtures need expansion.
-
-These boundaries are deliberate: artwork fidelity takes priority over aggressive generative editing.
-
-## Roadmap
-
-### V2.2 — universal mapping validation
-- validate one-slot and multi-slot scenes;
-- add confidence thresholds and retry strategy;
-- add manual correction directly to universal guides;
-- add screenshot-based visual regression fixtures.
-
-### V2.3 — occlusion and materials
-- foreground occlusion masks;
-- material-aware reflection passes;
-- texture-aware replacement of old artwork;
-- stronger surface segmentation.
-
-### V3 — specialized engines
-- optional cylinder/packaging engine;
-- constrained proxy 3D;
-- richer material models;
-- shared project state between universal Studio and specialized engines.
+1. Do external users complete a useful mockup from their own scene or a generated scene?
+2. Is immutable-artwork fidelity noticeably valuable to them?
+3. Will any of those users click or pay for the Creator price hypothesis?
 
 ## License
 
