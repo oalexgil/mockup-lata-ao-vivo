@@ -1,146 +1,94 @@
-# Scene generation adapter
+# Scene generation strategy
 
-Mockup Vision separates **scene generation** from **brand application**.
+Mockup Vision separates **scene sourcing** from **brand application**.
 
-The browser editor must never embed a provider API key. A production generator sits behind a small server-side adapter so secrets remain outside the client and providers can change without rewriting the editor.
+## Core rule
 
-## Product rule
+The product must remain useful even with zero image-generation API availability.
 
-The generator creates:
+A user can start from:
 
-- product/model;
-- scene and composition;
-- lighting and materials;
-- one or more clean customizable surfaces.
+1. an integrated generated scene;
+2. a scene generated in another tool;
+3. an existing product photo/mockup.
 
-The generator must **not** reproduce the final logo, brand name, label text or user artwork. Those assets are applied afterwards by Mockup Vision.
+All three converge into the same surface-mapping and immutable-artwork workflow.
 
-## Endpoint
+## Integrated provider chain
 
 `POST /api/generate-scene`
 
-The same endpoint handles first generation and iteration.
+The server tries configured providers in `IMAGE_PROVIDER_ORDER`.
 
-### Request
-
-```json
-{
-  "prompt": "brand-safe normalized generation prompt",
-  "references": [
-    {
-      "role": "product",
-      "name": "cup-reference.png",
-      "dataUrl": "data:image/png;base64,..."
-    },
-    {
-      "role": "scene",
-      "name": "studio-reference.jpg",
-      "dataUrl": "data:image/jpeg;base64,..."
-    }
-  ],
-  "previousImage": null,
-  "output": {
-    "format": "png",
-    "requestMockupSlots": true,
-    "maxSlots": 8
-  }
-}
-```
-
-For iteration, `previousImage` contains the selected generated version and `prompt` includes the requested change while preserving the original scene logic.
-
-### Response
-
-Preferred response:
-
-```json
-{
-  "id": "generation-id",
-  "imageDataUrl": "data:image/png;base64,...",
-  "slots": [
-    {
-      "id": "poster-left",
-      "label": "Poster esquerdo",
-      "quad": [
-        {"x": 0.08, "y": 0.18},
-        {"x": 0.34, "y": 0.15},
-        {"x": 0.35, "y": 0.62},
-        {"x": 0.09, "y": 0.64}
-      ]
-    },
-    {
-      "id": "laptop-screen",
-      "label": "Tela do notebook",
-      "quad": [
-        {"x": 0.58, "y": 0.30},
-        {"x": 0.84, "y": 0.32},
-        {"x": 0.82, "y": 0.57},
-        {"x": 0.60, "y": 0.56}
-      ]
-    }
-  ]
-}
-```
-
-`quad` may use normalized `0..1` coordinates or image-pixel coordinates. Mockup Vision normalizes both forms.
-
-If slot metadata is unavailable, return `slots: []`. The browser falls back to local object detection and manual area creation.
-
-A same-origin `imageUrl` may be returned instead of `imageDataUrl`, but the asset must allow canvas use without CORS tainting.
-
-## Multi-art workflow
-
-1. generation returns one or more editable mockup slots when possible;
-2. the user uploads multiple logos, labels or artwork files;
-3. Mockup Vision assigns assets sequentially to the available slots;
-4. each slot remains independently editable and can be reassigned;
-5. final rendering happens in the browser.
-
-This means the image generator never needs to reproduce brand artwork itself.
-
-## Iteration
-
-The UI keeps generated versions as a lightweight session history. A new iteration sends:
-
-- the original normalized prompt;
-- the user's change request;
-- the currently selected generated image;
-- the same references unless changed.
-
-The provider should preserve product identity, composition logic and usable customizable surfaces unless the user explicitly asks to change them.
-
-## Security boundary
-
-- no provider secret in browser JavaScript;
-- no provider secret in `localStorage`;
-- validate upload MIME/size server-side;
-- set request and image-size limits;
-- use short-lived generated-asset URLs when possible;
-- define retention/deletion policy before storing user reference images;
-- log request IDs, not raw user images or prompts by default;
-- add rate limiting before public deployment.
-
-## Provider adapter
-
-Application-level interface:
+Default:
 
 ```text
-generateScene(request) -> { image, slots, id }
+cloudflare → pollinations → openai
 ```
 
-Provider-specific schemas stay behind this adapter.
+Only providers capable of handling the request are attempted. The Pollinations beta adapter is text-only; requests with reference images or `previousImage` skip it.
 
-## Current V2 state
+Temporary provider failures can fall through to the next provider. Invalid user input is not hidden by fallback.
 
-The browser now implements the full client contract:
+## Quotas
 
-- natural-language brief or image-reference input;
-- Generate button;
-- iteration UI and version history;
-- manual import fallback while no server provider is configured;
-- multi-art upload;
-- multi-slot assignment and editing;
-- provider-slot normalization;
-- local detector/manual fallback.
+The commercial beta protects integrated generation with:
 
-The only intentionally missing production piece is the server-side image-generation provider itself.
+```env
+FREE_SCENE_GENERATIONS_PER_DAY=3
+SCENE_GLOBAL_DAILY_LIMIT=120
+```
+
+A 429 response from the beta scene quota contains:
+
+```json
+{
+  "code": "FREE_SCENE_DAILY_LIMIT",
+  "manualImportAvailable": true,
+  "resetAt": "..."
+}
+```
+
+The Studio then directs the user to import a scene and continue.
+
+Application quotas are in memory. Provider/account controls remain the source of truth for actual billing.
+
+## Cloudflare
+
+Text-only default:
+
+```text
+@cf/black-forest-labs/flux-1-schnell
+```
+
+Reference default:
+
+```text
+@cf/black-forest-labs/flux-2-klein-4b
+```
+
+The provider key stays on the server.
+
+## Pollinations
+
+Optional environment:
+
+```env
+POLLINATIONS_API_KEY=
+POLLINATIONS_IMAGE_MODEL=flux
+```
+
+This provider is an experimental fallback and should not be marketed as permanently free. The API ecosystem can change access tiers and pricing independently of Mockup Vision.
+
+## OpenAI
+
+Optional last fallback. No OpenAI secret is required for the zero-generation import path.
+
+## Security
+
+- never expose provider secret keys in client JavaScript;
+- never store provider secrets in localStorage;
+- validate request size;
+- rate-limit public inference;
+- do not log raw uploaded artwork by default;
+- imported artwork is composed locally in the browser whenever possible.
