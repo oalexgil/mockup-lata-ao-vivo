@@ -3,10 +3,73 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Mockup Vision</title>
-<meta http-equiv="refresh" content="0; url=photo.html">
-<script>window.location.replace('./photo.html' + window.location.search + window.location.hash);</script>
-<style>html,body{height:100%;margin:0;background:#08111d;color:#f4f8fb;font-family:system-ui,sans-serif}body{display:grid;place-items:center}a{color:#5bd3c7}</style>
+<title>Mockup Vision — mockups com a sua arte original</title>
+<meta name="description" content="Crie ou importe uma cena, mapeie superfícies e aplique sua arte original sem pedir para a IA redesenhar logo, texto ou identidade.">
+<meta name="theme-color" content="#090d0e">
+<style>
+:root{--bg:#090d0e;--panel:#111719;--panel2:#172024;--line:#293439;--ink:#f1f5f4;--dim:#9aa7aa;--cyan:#00d8ff;--mint:#65e4b1;--gold:#f0c66b}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(circle at 82% 5%,rgba(0,216,255,.09),transparent 26%),var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,sans-serif;line-height:1.55}a{text-decoration:none;color:inherit}.wrap{max-width:1120px;margin:auto;padding:0 24px}.nav{height:72px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.06)}.brand{font-weight:800;letter-spacing:-.04em;font-size:20px}.beta{font:700 9px/1 ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:#041417;background:var(--cyan);padding:5px 7px;border-radius:999px;margin-left:7px}.nav a:last-child{font-size:13px;color:var(--dim)}.hero{display:grid;grid-template-columns:1.25fr .75fr;gap:60px;align-items:center;padding:105px 0 82px}.eyebrow{color:var(--cyan);font:700 11px/1.2 ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase}.hero h1{font-size:clamp(3.3rem,7vw,6.8rem);line-height:.92;letter-spacing:-.07em;margin:20px 0 26px}.hero h1 em{font-style:normal;color:var(--cyan)}.hero p{max-width:690px;color:var(--dim);font-size:18px}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:30px}.btn{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 20px;border-radius:9px;border:1px solid var(--line);font-size:13px;font-weight:800}.btn.primary{background:var(--cyan);border-color:var(--cyan);color:#061316}.btn.secondary{background:rgba(255,255,255,.02)}.promise{margin-top:35px;display:flex;gap:18px;flex-wrap:wrap;color:#728084;font-size:11px}.promise span{padding-left:12px;border-left:2px solid rgba(0,216,255,.25)}.visual{border:1px solid var(--line);border-radius:22px;background:linear-gradient(145deg,#151d20,#0d1214);padding:18px;box-shadow:0 30px 80px rgba(0,0,0,.35)}.mock{aspect-ratio:4/5;border-radius:14px;position:relative;overflow:hidden;background:linear-gradient(155deg,#e9e3d7,#b9b3a7 65%,#8a857d)}.product{position:absolute;left:17%;right:17%;top:20%;bottom:16%;border-radius:10px;background:linear-gradient(100deg,#cfc9bc,#f8f4e8 48%,#aaa499);box-shadow:0 30px 50px rgba(0,0,0,.26);transform:perspective(800px) rotateY(-9deg)}.surface{position:absolute;inset:20% 14%;border:2px solid var(--cyan);display:grid;place-items:center;color:#082027;font:800 12px ui-monospace,monospace;background:rgba(0,216,255,.12)}.surface::before,.surface::after{content:"";position:absolute;width:8px;height:8px;border-radius:50%;background:var(--cyan)}.surface::before{left:-5px;top:-5px}.surface::after{right:-5px;bottom:-5px}.visual-note{display:flex;justify-content:space-between;gap:15px;margin-top:14px;font:600 10px ui-monospace,monospace;color:var(--dim)}section{padding:76px 0;border-top:1px solid rgba(255,255,255,.06)}.section-head{display:grid;grid-template-columns:.7fr 1.3fr;gap:35px;margin-bottom:30px}.section-head h2{font-size:clamp(2rem,4vw,3.6rem);line-height:1;letter-spacing:-.05em;margin:8px 0}.section-head p{color:var(--dim);max-width:650px}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.card{padding:24px;border:1px solid var(--line);border-radius:16px;background:var(--panel)}.card b{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#0b2a31;color:var(--cyan);font:700 10px ui-monospace,monospace}.card h3{font-size:20px;letter-spacing:-.03em;margin:24px 0 8px}.card p{color:var(--dim);font-size:13px}.rule{background:#e8eee9;color:#0b1210}.rule .wrap{padding-top:72px;padding-bottom:72px}.rule h2{font-size:clamp(2.3rem,5vw,4.6rem);line-height:.96;letter-spacing:-.06em;max-width:900px;margin:12px 0 20px}.rule p{color:#4a5853;max-width:760px}.pricing{display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:830px}.plan{padding:28px;border:1px solid var(--line);border-radius:20px;background:var(--panel)}.plan.featured{border-color:rgba(0,216,255,.48);box-shadow:0 0 0 1px rgba(0,216,255,.08)}.plan .price{font-size:45px;font-weight:850;letter-spacing:-.055em;margin:18px 0 4px}.plan .price small{font-size:13px;color:var(--dim);letter-spacing:0}.plan ul{list-style:none;padding:0;margin:24px 0;display:grid;gap:10px}.plan li{font-size:13px;color:var(--dim)}.plan li::before{content:"✓";color:var(--mint);margin-right:9px}.notice{font-size:11px;color:#6f7d80;margin-top:12px}.footer{padding:42px 0;color:#657276;font-size:11px;border-top:1px solid rgba(255,255,255,.06);display:flex;justify-content:space-between;gap:20px}
+@media(max-width:800px){.hero,.section-head{grid-template-columns:1fr}.visual{max-width:520px}.grid3,.pricing{grid-template-columns:1fr}.hero{padding-top:70px}.footer{flex-direction:column}}
+</style>
 </head>
-<body><p>Abrindo <a href="photo.html">Mockup Vision Studio</a>…</p></body>
+<body>
+<div class="wrap">
+<nav class="nav"><a class="brand" href="/">Mockup Vision <span class="beta">Beta</span></a><a href="photo.html">Abrir Studio →</a></nav>
+<header class="hero">
+<div>
+<div class="eyebrow">Fidelity-first AI mockups</div>
+<h1>A IA cria a cena.<br><em>Sua arte continua sua.</em></h1>
+<p>Gere ou importe qualquer cena, identifique as superfícies e aplique o arquivo original sobre elas. Logo, texto, tipografia e ilustração não precisam ser redesenhados pelo modelo.</p>
+<div class="actions"><a class="btn primary" href="photo.html">Testar Studio grátis →</a><a class="btn secondary" href="#planos">Ver planos da beta</a></div>
+<div class="promise"><span>foto própria sem cota</span><span>múltiplas artes</span><span>exportação PNG</span><span>aplicação determinística</span></div>
+</div>
+<div class="visual" aria-hidden="true"><div class="mock"><div class="product"><div class="surface">ARTE ORIGINAL</div></div></div><div class="visual-note"><span>CENA</span><span>SUPERFÍCIE MAPEADA</span><span>PIXELS PRESERVADOS</span></div></div>
+</header>
+</div>
+
+<section>
+<div class="wrap">
+<div class="section-head"><div><span class="eyebrow">Fluxo</span><h2>Gerar é opcional.<br>Fidelidade não.</h2></div><p>O Mockup Vision foi redesenhado para não morrer quando uma API fica sem cota. A cena pode vir do gerador integrado, de outra ferramenta ou de uma foto sua. O restante do fluxo continua.</p></div>
+<div class="grid3">
+<article class="card"><b>01</b><h3>Traga a cena</h3><p>Use a cota de geração da beta ou importe uma imagem já existente sem consumir geração.</p></article>
+<article class="card"><b>02</b><h3>Mapeie as áreas</h3><p>A visão identifica superfícies utilizáveis; você mantém correção manual quando a geometria precisa de ajuste.</p></article>
+<article class="card"><b>03</b><h3>Aplique o original</h3><p>O navegador compõe os arquivos enviados na cena. O modelo não recebe permissão para reescrever a arte.</p></article>
+</div>
+</div>
+</section>
+
+<section class="rule">
+<div class="wrap"><span class="eyebrow" style="color:#16626f">Regra de produto</span><h2>“Tropicaliza” não pode virar “Tropalizaa”.</h2><p>O gerador decide composição, materiais e iluminação. A sua marca entra depois, a partir do arquivo original. Perspectiva, escala, deformação de superfície e integração de luz são permitidas; alteração do conteúdo da arte não.</p></div>
+</section>
+
+<section id="planos">
+<div class="wrap">
+<div class="section-head"><div><span class="eyebrow">Teste comercial</span><h2>Uma beta que mede demanda antes de escalar custo.</h2></div><p>O plano gratuito prova o núcleo do produto. O Creator Beta serve para testar disposição a pagar; checkout só aparece quando estiver realmente conectado.</p></div>
+<div class="pricing">
+<article class="plan"><span class="eyebrow">Free</span><div class="price">R$0</div><ul><li>Importar foto ou cena existente</li><li>Aplicar artes originais</li><li>Mapeamento e ajustes</li><li>Exportação PNG</li><li><span id="freeQuota">cota diária de cenas com IA</span></li></ul><a class="btn primary" style="width:100%" href="photo.html">Testar agora</a></article>
+<article class="plan featured"><span class="eyebrow">Creator Beta</span><div class="price"><span id="creatorPrice">R$29</span><small>/mês</small></div><ul><li>Hipótese de preço para validação</li><li>Mais geração integrada</li><li>Projetos e histórico — próxima etapa</li><li>Prioridade nos testes de fidelidade</li><li>Uso profissional em validação</li></ul><a id="creatorCta" class="btn secondary" style="width:100%" href="#planos">Checkout ainda não conectado</a><p id="creatorNote" class="notice">Nenhuma cobrança é feita por este botão enquanto não houver checkout configurado.</p></article>
+</div>
+</div>
+</section>
+
+<div class="wrap"><footer class="footer"><span>Mockup Vision · beta experimental</span><span>Geração é substituível. Fidelity é o produto.</span></footer></div>
+<script>
+(async()=>{
+  try{
+    const r=await fetch('/api/commercial',{cache:'no-store'});
+    if(!r.ok)return;
+    const c=await r.json();
+    const q=document.getElementById('freeQuota');
+    if(q) q.textContent=c.free.sceneGenerationsPerDay===0?'geração integrada sem limite configurado':c.free.sceneGenerationsPerDay+' cena(s) com IA por dia';
+    const p=document.getElementById('creatorPrice');
+    if(p) p.textContent='R$'+Number(c.creator.priceBrl||29).toLocaleString('pt-BR');
+    const a=document.getElementById('creatorCta');
+    const n=document.getElementById('creatorNote');
+    const url=c.creator.checkoutUrl||c.creator.waitlistUrl;
+    if(url&&a){a.href=url;a.target='_blank';a.rel='noopener';a.textContent=c.creator.checkoutConfigured?'Entrar no Creator Beta →':'Entrar na lista da beta →';}
+    if(n&&c.creator.checkoutConfigured)n.textContent='O checkout está configurado para o teste de preço desta beta.';
+  }catch{}
+})();
+</script>
+</body>
 </html>
