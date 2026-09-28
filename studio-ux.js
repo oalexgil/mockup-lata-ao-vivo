@@ -28,6 +28,7 @@ function addFlowStyles() {
 
 function providerLabel(provider) {
   if (provider === 'cloudflare') return 'Cloudflare Workers AI';
+  if (provider === 'pollinations') return 'Pollinations';
   if (provider === 'openai') return 'OpenAI';
   return 'gerador';
 }
@@ -119,16 +120,20 @@ async function checkGenerator() {
     const response = await fetch('/api/health', { cache: 'no-store' });
     if (!response.ok) throw new Error('health unavailable');
     const health = await response.json();
+    const daily = health.generationResilience?.freeSceneGenerationsPerDay;
     if (health.generatorConfigured) {
       if (!sceneIsReady()) {
-        status.textContent = `${providerLabel(health.provider)} conectado. Escreva o pedido e clique em “Gerar imagem”.`;
+        const quotaText = daily === 0 || daily == null
+          ? ''
+          : ` · até ${daily} cena(s) de IA/dia nesta beta`;
+        status.textContent = `${providerLabel(health.provider)} conectado${quotaText}. Importar uma cena continua sem cota.`;
         status.className = 'status ok';
       }
-      $('fallbackBox')?.classList.add('hidden');
     } else {
-      status.textContent = 'Gerador não configurado. Para o modo gratuito, adicione CLOUDFLARE_ACCOUNT_ID e CLOUDFLARE_API_TOKEN aos Codespaces Secrets.';
+      status.textContent = 'Geração integrada indisponível neste ambiente. Importe uma foto ou cena e continue normalmente sem consumir API.';
       status.className = 'status warn';
     }
+    $('fallbackBox')?.classList.remove('hidden');
   } catch {
     status.textContent = 'Abra o Studio com “npm start” para habilitar a geração integrada.';
     status.className = 'status warn';
