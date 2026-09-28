@@ -596,16 +596,31 @@ async function callGeneration(iteration = '') {
     const response = await fetch('/api/generate-scene', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     });
-    if (!response.ok) throw new Error(`generation endpoint ${response.status}`);
-    const result = await response.json();
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(payload.error || `generation endpoint ${response.status}`);
+      error.code = payload.code || '';
+      error.status = response.status;
+      throw error;
+    }
+    const result = payload;
     const source = result.imageDataUrl || result.imageUrl;
     if (!source) throw new Error('provider returned no image');
     addVersion({ imageDataUrl: source, slots: result.slots || [], source: 'api', providerId: result.id || null });
     await setPhotoFromSource(source, result.slots || [], true);
-    setGenerateStatus('Imagem gerada. Você pode iterar ou seguir para as artes.', 'ok');
+    const remaining = result.quota?.userRemaining;
+    const quotaText = Number.isFinite(remaining) ? ` · ${remaining} geração(ões) restante(s) hoje` : '';
+    const fallbackText = result.fallbacksUsed?.length ? ` · fallback usado: ${result.provider}` : '';
+    setGenerateStatus(`Cena gerada${quotaText}${fallbackText}. Você pode iterar ou seguir para as artes.`, 'ok');
   } catch (error) {
     console.warn(error);
-    setGenerateStatus('O gerador ainda não está conectado neste ambiente. Gere externamente com o briefing preparado e carregue o resultado em “Importar imagem gerada”.', 'warn');
+    const quotaEnded = error?.code === 'FREE_SCENE_DAILY_LIMIT' || error?.code === 'BETA_SCENE_DAILY_LIMIT';
+    setGenerateStatus(
+      quotaEnded
+        ? error.message
+        : `${error?.message || 'Geração integrada indisponível.'} Importe uma cena pronta e continue sem consumir geração.`,
+      'warn'
+    );
     $('fallbackBox')?.classList.remove('hidden');
   } finally {
     if (button) button.disabled = false;
