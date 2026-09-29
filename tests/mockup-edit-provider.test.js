@@ -7,6 +7,7 @@ import {
   normalizeEditDimensions,
   normalizeFidelityOptions,
   parseReferenceDataUrl,
+  isProviderSafetyBlockMessage,
 } from '../server/mockup-edit-provider.js';
 
 test('direct editor defaults to Cloudflare FLUX.2 klein multi-reference model', () => {
@@ -138,4 +139,10 @@ test('placement parser converts collar distance and centering into explicit geom
 test('left chest placement stays inside the requested shirt region', () => {
   const instructions = explicitPlacementInstructions('Aplicar no peito esquerdo da camiseta');
   assert.match(instructions.join(' '), /wearer's left-chest print region/i);
+});
+
+
+test('recognizes provider moderation blocks without treating normal errors as safety flags', () => {
+  assert.equal(isProviderSafetyBlockMessage('AiError: Your output has been flagged. Please choose another prompt / input image combination'), true);
+  assert.equal(isProviderSafetyBlockMessage('Cloudflare mockup editor 500'), false);
 });
