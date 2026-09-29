@@ -14,9 +14,9 @@ const wideSurface = [
   { x: 0, y: 900 },
 ];
 
-test('maximum fidelity routes to deterministic rendering while other modes keep direct AI edit', () => {
+test('strict and balanced fidelity preserve artwork through deterministic rendering', () => {
   assert.equal(fidelityApplicationStrategy({ fidelityMode: 'exact' }), 'deterministic-exact');
-  assert.equal(fidelityApplicationStrategy({ fidelityMode: 'balanced' }), 'direct-ai-edit');
+  assert.equal(fidelityApplicationStrategy({ fidelityMode: 'balanced' }), 'deterministic-balanced');
   assert.equal(fidelityApplicationStrategy({ fidelityMode: 'integrated' }), 'direct-ai-edit');
 });
 
