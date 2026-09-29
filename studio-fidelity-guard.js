@@ -189,6 +189,20 @@ async function deterministicFidelityResponse(body, strategy = 'deterministic-exa
   };
 }
 
+window.MockupVisionFidelityGuard = Object.freeze({
+  settings: fidelitySettings,
+  strategy() {
+    return fidelityApplicationStrategy(fidelitySettings());
+  },
+  async renderDeterministic(body = {}) {
+    const strategy = fidelityApplicationStrategy(fidelitySettings());
+    if (!strategy.startsWith('deterministic-')) {
+      throw new Error('O modo atual exige edição generativa.');
+    }
+    return deterministicFidelityResponse(body, strategy);
+  },
+});
+
 window.fetch = async (input, init = {}) => {
   const url = typeof input === 'string' ? input : input?.url || '';
   if (!url.includes('/api/render-mockup') || typeof init?.body !== 'string') {
