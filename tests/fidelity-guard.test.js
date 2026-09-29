@@ -5,9 +5,10 @@ import fs from 'node:fs';
 const guard = fs.readFileSync(new URL('../studio-fidelity-guard.js', import.meta.url), 'utf8');
 const server = fs.readFileSync(new URL('../server/index.js', import.meta.url), 'utf8');
 
-test('exact fidelity intercepts direct render and uses validated deterministic application plan', () => {
+test('strict and balanced fidelity intercept direct render and use a validated deterministic application plan', () => {
   assert.match(guard, /fidelityApplicationStrategy/);
   assert.match(guard, /deterministic-exact/);
+  assert.match(guard, /deterministic-balanced/);
   assert.match(guard, /nextFetch\(['"]\/api\/apply-plan['"]/);
   assert.match(guard, /surfaceValidated/);
 });
@@ -20,8 +21,8 @@ test('exact fidelity uses the original uploaded file and preserves aspect ratio 
   assert.match(guard, /imageSmoothingQuality = ['"]high['"]/);
 });
 
-test('unsafe exact application is blocked instead of silently falling back to generative deformation', () => {
-  assert.match(guard, /deterministic-exact-blocked/);
+test('unsafe deterministic application is blocked instead of silently falling back to generative deformation', () => {
+  assert.match(guard, /strategy.*blocked|blocked.*strategy/s);
   assert.match(guard, /status: 422/);
   assert.match(guard, /proteg.*arte|proteger.*arte|deforma/i);
 });
