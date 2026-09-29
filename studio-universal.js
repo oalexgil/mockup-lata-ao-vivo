@@ -51,7 +51,8 @@ function updateModeControls() {
   const instruction = $('mockupApplyInstruction');
   const single = count <= 1;
 
-  if (primary) primary.textContent = single ? 'Aplicar mockup com IA' : 'Mapear várias artes com IA';
+  const creative = $('mockupFidelityMode')?.value === 'integrated';
+  if (primary) primary.textContent = single ? (creative ? 'Aplicar com IA criativa' : 'Aplicar arte') : 'Mapear várias artes';
   if (instruction) instruction.style.display = single ? 'block' : 'none';
   if (advanced) advanced.style.display = single ? 'block' : 'none';
   if (finalize) finalize.style.display = U.workflowMode === 'advanced' || !single ? '' : 'none';
@@ -329,7 +330,10 @@ function mappingList() {
   if (U.directRenderReady) {
     const row = document.createElement('div');
     row.className = 'tiny';
-    row.textContent = 'Aplicação direta com IA · cena + Arte 1 → mockup final';
+    const deterministic = String(U.directRenderMeta?.mode || '').startsWith('deterministic-');
+    row.textContent = deterministic
+      ? 'Aplicação local fiel · cena + Arte 1 → mockup final'
+      : 'Aplicação criativa com IA · cena + Arte 1 → mockup final';
     box.appendChild(row);
     return;
   }
@@ -382,7 +386,10 @@ async function applySingleWithAI() {
   if (advanced) advanced.disabled = true;
   resetApplicationState('direct');
   U.mappingStatus = 'direct-rendering';
-  setFlowStatus('A IA está usando a cena e a arte como referências para gerar o mockup final…');
+  const creativeMode = $('mockupFidelityMode')?.value === 'integrated';
+  setFlowStatus(creativeMode
+    ? 'A IA está integrando a arte de forma criativa na cena…'
+    : 'Localizando a superfície para aplicar os pixels da arte original…');
 
   try {
     await prepareApplication();
@@ -413,12 +420,18 @@ async function applySingleWithAI() {
     U.finalized = true;
     renderOverlay({ guides: false });
     mappingList();
-    setFlowStatus('Mockup final gerado com IA usando a cena e a arte como referências. Confira letras e detalhes finos do rótulo antes de salvar.', 'ok');
+    const deterministic = String(result?.mode || '').startsWith('deterministic-');
+    setFlowStatus(
+      deterministic
+        ? 'Arte original aplicada sem regeneração. Revise o encaixe e, se necessário, ajuste a superfície.'
+        : 'Mockup gerado em modo criativo. Confira letras, logos e detalhes finos antes de salvar.',
+      'ok',
+    );
     document.dispatchEvent(new CustomEvent('mockup:direct-rendered', { detail: { result } }));
   } catch (error) {
     console.warn(error);
     resetApplicationState('direct');
-    setFlowStatus(`Não foi possível gerar o mockup direto: ${error.message}. Você ainda pode usar Revisar áreas / fidelidade exata.`, 'warn');
+    setFlowStatus(`Não foi possível aplicar a arte: ${error.message}. Use Revisar superfícies para marcar ou corrigir os quatro cantos.`, 'warn');
   } finally {
     if (primary) primary.disabled = false;
     if (advanced) advanced.disabled = false;
@@ -582,14 +595,15 @@ function waitForLegacyAssetLoad(expected, timeoutMs = 6000) {
 
 function boot() {
   if (!ensureUniversalControls()) return setTimeout(boot, 120);
+  $('mockupFidelityMode')?.addEventListener('change', updateModeControls);
   $('brandFiles')?.addEventListener('change', async () => {
     const expected = uploadedFileCount();
     resetApplicationState(expected > 1 ? 'advanced' : 'direct');
     updateModeControls();
     if (expected) {
       setFlowStatus(expected === 1
-        ? 'Arte carregada. Preparando edição direta do mockup com IA…'
-        : 'Artes carregadas. Preparando mapeamento automático das áreas…');
+        ? 'Arte carregada. Preparando aplicação na superfície…'
+        : 'Artes carregadas. Preparando mapeamento das áreas…');
       await waitForLegacyAssetLoad(expected);
       if (expected === 1) applySingleWithAI();
       else analyzeLayout();
@@ -610,7 +624,7 @@ function boot() {
       event.stopImmediatePropagation();
       const out = mergedCanvas({ guides: false });
       const link = document.createElement('a');
-      link.download = 'mockup-vision-ai.png';
+      link.download = 'mockup-vision.png';
       link.href = out.toDataURL('image/png');
       link.click();
       return;
