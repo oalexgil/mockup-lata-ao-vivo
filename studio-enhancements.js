@@ -252,12 +252,12 @@ function softResetStudio() {
 
   const status = $('status');
   if (status) {
-    status.textContent = 'Nova sessão pronta. Descreva o próximo mockup.';
+    status.textContent = 'Nova sessão pronta. Suba uma cena pronta ou gere uma com IA.';
     status.className = 'status ok';
   }
   const generateStatus = $('generateStatus');
   if (generateStatus) {
-    generateStatus.textContent = 'Novo mockup pronto. Escreva um pedido ou envie referências.';
+    generateStatus.textContent = 'Modo de geração pronto. Escreva um pedido ou envie referências.';
     generateStatus.className = 'status';
   }
   const flowStatus = $('autoApplyFlowStatus');
@@ -285,9 +285,9 @@ function addNewMockupControl() {
 }
 
 function fidelityDescription(mode) {
-  if (mode === 'balanced') return 'Mantém identidade e proporção, permitindo integração moderada com material e curvatura.';
-  if (mode === 'integrated') return 'Permite integração visual mais forte. Use quando a arte não tiver texto, retratos ou detalhes críticos.';
-  return 'Prioriza a imagem original: sem esticar, sem achatar e com deformação mínima. Recomendado para fotos, logos e rótulos.';
+  if (mode === 'balanced') return 'Preserva os pixels da arte e a proporção. Usa apenas integração local moderada de luz e encaixe; não redesenha texto, logo ou ilustração.';
+  if (mode === 'integrated') return 'Modo criativo: permite edição generativa para integrar material e curvatura. Pode reinterpretar detalhes; evite quando texto, logo ou identidade visual precisarem ser exatos.';
+  return 'Fidelidade estrita: aplica o arquivo original por geometria determinística. A IA pode localizar a superfície, mas não redesenha a arte.';
 }
 
 function addFidelityControls() {
@@ -300,9 +300,9 @@ function addFidelityControls() {
   panel.innerHTML = `
     <div class="fidelity-title"><span>Fidelidade da arte</span><span class="fidelity-badge">RECOMENDADO</span></div>
     <select id="mockupFidelityMode" aria-label="Modo de fidelidade da arte">
-      <option value="exact">Fidelidade máxima</option>
-      <option value="balanced">Equilibrado</option>
-      <option value="integrated">Integração mais forte</option>
+      <option value="exact">Fidelidade estrita · sem redesenho</option>
+      <option value="balanced">Equilibrado · sem redesenho</option>
+      <option value="integrated">Criativo · IA generativa</option>
     </select>
     <div class="fidelity-checks">
       <label class="fidelity-check"><input id="preserveAspectRatio" type="checkbox" checked><span>Preservar proporção original</span></label>
