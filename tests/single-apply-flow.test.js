@@ -6,8 +6,8 @@ const studio = fs.readFileSync(new URL('../studio-universal.js', import.meta.url
 const server = fs.readFileSync(new URL('../server/index.js', import.meta.url), 'utf8');
 const provider = fs.readFileSync(new URL('../server/mockup-edit-provider.js', import.meta.url), 'utf8');
 
-test('single artwork uses direct AI render endpoint with scene and artwork references', () => {
-  assert.match(studio, /Aplicar mockup com IA/);
+test('single artwork routes through the render endpoint while the default UI remains deterministic', () => {
+  assert.match(studio, /Aplicar arte/);
   assert.match(studio, /fetch\(['"]\/api\/render-mockup['"]/);
   assert.match(studio, /sceneImageDataUrl: sceneReference/);
   assert.match(studio, /artworkImageDataUrl: artworkReference/);
@@ -34,8 +34,8 @@ test('optional placement instruction remains available and rooted prompt protect
   assert.match(provider, /perspective, scale, rotation, curvature/);
 });
 
-test('advanced deterministic mapping remains available for exact-fidelity fallback', () => {
-  assert.match(studio, /Revisar áreas \/ fidelidade exata/);
+test('advanced deterministic mapping remains available for fidelity review', () => {
+  assert.match(studio, /Revisar áreas \/ fidelidade exata|Revisar superfícies/);
   assert.match(studio, /fetch\(['"]\/api\/analyze-layout['"]/);
   assert.match(studio, /uploadedFileCount\(\) === 1 \? applySingleWithAI\(\) : analyzeLayout\(\)/);
   assert.match(studio, /warpArtwork\(/);
@@ -43,6 +43,6 @@ test('advanced deterministic mapping remains available for exact-fidelity fallba
 
 test('direct render is exportable locally without surface validation', () => {
   assert.match(studio, /if \(U\.directRenderReady\)/);
-  assert.match(studio, /mockup-vision-ai\.png/);
+  assert.match(studio, /mockup-vision\.png/);
   assert.match(studio, /toDataURL\(['"]image\/png['"]\)/);
 });
