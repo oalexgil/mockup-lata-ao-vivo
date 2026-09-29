@@ -31,48 +31,58 @@ input[type=file]{display:none}.asset-list{display:grid;gap:6px;margin-top:8px}.a
   </div>
 
   <section class="card">
-    <div class="card-head"><span class="num">01</span><strong>O que você precisa?</strong></div>
+    <div class="card-head"><span class="num">01</span><strong>Cena do mockup</strong></div>
     <div class="card-body">
-      <textarea id="mockupPrompt" placeholder="Ex.: apresentação minimalista com 6 peças gráficas sobre fundo rosa neutro; uma delas em uma tela de notebook. Iluminação suave e espaços limpos para inserir as artes."></textarea>
-      <div class="row2">
-        <select id="sceneStyle">
-          <option value="commercial">Publicidade / produto</option>
-          <option value="ecommerce">E-commerce</option>
-          <option value="editorial">Editorial</option>
-          <option value="lifestyle">Lifestyle</option>
-          <option value="minimal">Minimalista</option>
-        </select>
-        <select id="desiredSlots">
-          <option value="">Espaços: automático</option>
-          <option value="1">1 espaço</option><option value="2">2 espaços</option><option value="3">3 espaços</option><option value="4">4 espaços</option><option value="5">5 espaços</option><option value="6">6 espaços</option><option value="7">7 espaços</option><option value="8">8 espaços</option>
-        </select>
-      </div>
-      <input id="surfaceHint" type="text" placeholder="Opcional · como devem ser as áreas do mockup?">
-      <label class="caption">Produto / modelo / objeto de referência</label>
-      <label class="filebtn" for="productRefs">+ Adicionar imagens</label>
-      <input id="productRefs" type="file" accept="image/*" multiple>
-      <label class="caption">Cena / inspiração / estilo de referência</label>
-      <label class="filebtn" for="sceneRefs">+ Adicionar imagens</label>
-      <input id="sceneRefs" type="file" accept="image/*" multiple>
-      <button id="generateBtn" class="primary" style="margin-top:11px">Gerar imagem</button>
-      <div id="generateStatus" class="status">Escreva um pedido ou envie imagens de referência.</div>
-
-      <div id="versions" class="versions"></div>
-      <div id="iterationBox" class="hidden" style="margin-top:10px">
-        <textarea id="iterationPrompt" placeholder="O que você quer mudar nesta versão? Ex.: deixe o fundo mais claro e aumente a distância entre as peças."></textarea>
-        <button id="iterateBtn" class="secondary">Gerar nova versão</button>
+      <div id="sceneSourceSwitch" class="scene-source-switch" role="group" aria-label="Origem da cena">
+        <button id="sceneSourceUpload" type="button" class="scene-source-option active" aria-pressed="true">Subir cena pronta</button>
+        <button id="sceneSourceGenerate" type="button" class="scene-source-option" aria-pressed="false">Gerar cena com IA</button>
       </div>
 
-      <div id="fallbackBox" class="hidden" style="margin-top:10px">
-        <p class="hint">Enquanto o provedor de geração não estiver conectado neste ambiente, você pode gerar externamente e continuar daqui.</p>
-        <label class="filebtn" for="generatedFallback">Importar imagem gerada</label>
-        <input id="generatedFallback" type="file" accept="image/*">
-      </div>
+      <div id="sceneSourcePanels">
+        <div id="sceneUploadPanel" class="scene-source-panel">
+          <p class="hint scene-source-help">Use uma foto ou mockup que você já tem. Esta imagem entra diretamente como base e não passa pelo gerador de cena.</p>
+          <label class="filebtn scene-upload-primary" for="photoFile">+ Escolher cena pronta</label>
+          <input id="photoFile" type="file" accept="image/*">
+        </div>
 
-      <details style="margin-top:10px"><summary class="tiny">Ou usar uma foto existente</summary>
-        <label class="filebtn" for="photoFile" style="margin-top:8px">Carregar foto / mockup existente</label>
-        <input id="photoFile" type="file" accept="image/*">
-      </details>
+        <div id="sceneGeneratePanel" class="scene-source-panel hidden">
+          <textarea id="mockupPrompt" placeholder="Ex.: apresentação minimalista com 6 peças gráficas sobre fundo rosa neutro; uma delas em uma tela de notebook. Iluminação suave e espaços limpos para inserir as artes."></textarea>
+          <div class="row2">
+            <select id="sceneStyle">
+              <option value="commercial">Publicidade / produto</option>
+              <option value="ecommerce">E-commerce</option>
+              <option value="editorial">Editorial</option>
+              <option value="lifestyle">Lifestyle</option>
+              <option value="minimal">Minimalista</option>
+            </select>
+            <select id="desiredSlots">
+              <option value="">Espaços: automático</option>
+              <option value="1">1 espaço</option><option value="2">2 espaços</option><option value="3">3 espaços</option><option value="4">4 espaços</option><option value="5">5 espaços</option><option value="6">6 espaços</option><option value="7">7 espaços</option><option value="8">8 espaços</option>
+            </select>
+          </div>
+          <input id="surfaceHint" type="text" placeholder="Opcional · como devem ser as áreas do mockup?">
+          <label class="caption">Produto / modelo / objeto de referência</label>
+          <label class="filebtn" for="productRefs">+ Adicionar imagens</label>
+          <input id="productRefs" type="file" accept="image/*" multiple>
+          <label class="caption">Cena / inspiração / estilo de referência</label>
+          <label class="filebtn" for="sceneRefs">+ Adicionar imagens</label>
+          <input id="sceneRefs" type="file" accept="image/*" multiple>
+          <button id="generateBtn" class="primary" style="margin-top:11px">Gerar cena</button>
+          <div id="generateStatus" class="status">Escreva um pedido ou envie imagens de referência.</div>
+
+          <div id="versions" class="versions"></div>
+          <div id="iterationBox" class="hidden" style="margin-top:10px">
+            <textarea id="iterationPrompt" placeholder="O que você quer mudar nesta versão? Ex.: deixe o fundo mais claro e aumente a distância entre as peças."></textarea>
+            <button id="iterateBtn" class="secondary">Gerar nova versão</button>
+          </div>
+
+          <div id="fallbackBox" class="hidden" style="margin-top:10px">
+            <p class="hint">Enquanto o provedor de geração não estiver conectado neste ambiente, você pode gerar externamente e continuar daqui.</p>
+            <label class="filebtn" for="generatedFallback">Importar imagem gerada</label>
+            <input id="generatedFallback" type="file" accept="image/*">
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -126,7 +136,7 @@ input[type=file]{display:none}.asset-list{display:grid;gap:6px;margin-top:8px}.a
 
 <main class="stage">
   <canvas id="display"></canvas>
-  <div id="empty" class="empty"><strong>Seu mockup começa aqui</strong>Descreva a cena ou envie uma referência. Depois o Mockup Vision aplica suas artes nas áreas detectadas.</div>
+  <div id="empty" class="empty"><strong>Seu mockup começa aqui</strong>Suba uma cena pronta ou gere uma com IA. Depois aplique suas artes com fidelidade controlada.</div>
   <div id="canvasHint" class="canvas-hint hidden">arraste os cantos da área selecionada</div>
 </main>
 </div>
