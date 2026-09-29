@@ -11,7 +11,9 @@ test('studio injects fidelity enhancement module', () => {
 
 test('fidelity UX defaults to maximum preservation', () => {
   assert.match(enhancements, /id="mockupFidelityMode"/);
-  assert.match(enhancements, /value="exact">Fidelidade máxima/);
+  assert.match(enhancements, /value="exact">Fidelidade estrita · sem redesenho/);
+  assert.match(enhancements, /value="balanced">Equilibrado · sem redesenho/);
+  assert.match(enhancements, /value="integrated">Criativo · IA generativa/);
   assert.match(enhancements, /id="preserveAspectRatio"[^>]*checked/);
   assert.match(enhancements, /id="limitDeformation"[^>]*checked/);
   assert.match(enhancements, /id="safeMargins"[^>]*checked/);
