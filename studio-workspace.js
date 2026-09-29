@@ -26,6 +26,10 @@ function addWorkspaceStyles() {
     body.mv-workspace button:disabled{cursor:not-allowed;filter:saturate(.55)}
     body.mv-workspace .technical-copy{display:none!important}
     .workspace-original-note{display:flex;align-items:flex-start;gap:7px;margin-top:8px;padding:8px 9px;border-radius:9px;background:rgba(101,216,169,.055);border:1px solid rgba(101,216,169,.14);color:#8db7a7;font-size:10.5px;line-height:1.45}.workspace-original-note strong{color:#9ee4c8}
+    .scene-source-switch{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;padding:4px;border:1px solid rgba(83,118,145,.28);border-radius:11px;background:rgba(6,14,23,.55)}
+    .scene-source-option{min-height:38px!important;border:0!important;background:transparent!important;color:#8096a8!important;font-size:11px!important;font-weight:700!important;box-shadow:none!important}
+    .scene-source-option.active,.scene-source-option[aria-pressed="true"]{background:rgba(91,211,199,.12)!important;color:#c5f5ee!important;box-shadow:inset 0 0 0 1px rgba(91,211,199,.27)!important}
+    .scene-source-panel.hidden{display:none!important}.scene-source-help{margin:0 0 9px!important;line-height:1.5}.scene-upload-primary{min-height:46px!important;display:flex!important;align-items:center!important;justify-content:center!important;border-color:rgba(91,211,199,.34)!important;color:#c7f3ed!important;background:rgba(91,211,199,.055)!important}
     @media(max-width:900px){.workspace-stagebar{top:9px;left:9px;right:9px}.workspace-stagebar .workspace-pill.secondary-pill{display:none}body.mv-workspace .stage{padding-top:48px!important}.workspace-nav{position:sticky;top:0;z-index:20;background:rgba(10,20,32,.95);backdrop-filter:blur(10px)}}
     @media(max-width:520px){.workspace-step{font-size:9px;padding:7px 3px}.workspace-step-index{display:none}.workspace-pill{max-width:72vw}}
   `;
@@ -107,6 +111,39 @@ function ensureOriginalNote() {
   note.innerHTML = '<span>✓</span><span><strong>Arquivo original preservado.</strong> Ajustes e encaixes são aplicados como versões derivadas; você pode voltar ao original.</span>';
   const assets = $('assetList');
   assets?.insertAdjacentElement('afterend', note);
+}
+
+function setSceneSourceMode(mode = 'upload', focus = false) {
+  const useGenerate = mode === 'generate';
+  const upload = $('sceneUploadPanel');
+  const generate = $('sceneGeneratePanel');
+  const uploadButton = $('sceneSourceUpload');
+  const generateButton = $('sceneSourceGenerate');
+  upload?.classList.toggle('hidden', useGenerate);
+  generate?.classList.toggle('hidden', !useGenerate);
+  uploadButton?.classList.toggle('active', !useGenerate);
+  generateButton?.classList.toggle('active', useGenerate);
+  uploadButton?.setAttribute('aria-pressed', String(!useGenerate));
+  generateButton?.setAttribute('aria-pressed', String(useGenerate));
+  document.body.dataset.sceneSource = useGenerate ? 'generate' : 'upload';
+  if (focus) {
+    if (useGenerate) $('mockupPrompt')?.focus();
+    else $('photoFile')?.focus();
+  }
+}
+
+function ensureSceneSourceChoice() {
+  const uploadButton = $('sceneSourceUpload');
+  const generateButton = $('sceneSourceGenerate');
+  if (!uploadButton || !generateButton || uploadButton.dataset.bound === 'true') return;
+  uploadButton.dataset.bound = 'true';
+  generateButton.dataset.bound = 'true';
+  uploadButton.addEventListener('click', () => setSceneSourceMode('upload', true));
+  generateButton.addEventListener('click', () => setSceneSourceMode('generate', true));
+  $('photoFile')?.addEventListener('change', () => setSceneSourceMode('upload'));
+  $('generateBtn')?.addEventListener('click', () => setSceneSourceMode('generate'));
+  document.addEventListener('mockup:soft-reset', () => setSceneSourceMode('upload'));
+  setSceneSourceMode(document.body.dataset.sceneSource || 'upload');
 }
 
 function polishLanguage() {
@@ -229,6 +266,7 @@ function configureWorkspace() {
   labelCard(cardFor('saveBtn'), 'Finalizar', 'Finalizar');
   ensureNavigation();
   ensureStageBar();
+  ensureSceneSourceChoice();
   wrapAdvancedAdjustments();
   ensureOriginalNote();
   polishLanguage();
