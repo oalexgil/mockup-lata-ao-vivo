@@ -2,7 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+const root = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+const html = fs.readFileSync(new URL('../cylinder-lab.html', import.meta.url), 'utf8');
+const studio = fs.readFileSync(new URL('../photo.html', import.meta.url), 'utf8');
+
+test('public root opens Mockup Vision Studio while preserving Cylinder Lab separately', () => {
+  assert.match(root, /photo\.html/);
+  assert.match(studio, /Mockup Vision/);
+  assert.match(studio, /cylinder-lab\.html/);
+  assert.match(studio, /studio-product-polish\.js/);
+  assert.match(studio, /studio-workspace\.js/);
+});
 
 test('runtime dependencies are version-pinned', () => {
   assert.match(html, /three@0\.128\.0/);
