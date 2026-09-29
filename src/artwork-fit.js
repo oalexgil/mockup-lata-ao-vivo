@@ -27,7 +27,9 @@ export function approximateQuadAspectRatio(quad) {
 
 export function fidelityApplicationStrategy(options = {}) {
   const fidelityMode = String(options.fidelityMode || 'exact').trim().toLowerCase();
-  return fidelityMode === 'exact' ? 'deterministic-exact' : 'direct-ai-edit';
+  if (fidelityMode === 'exact') return 'deterministic-exact';
+  if (fidelityMode === 'balanced') return 'deterministic-balanced';
+  return 'direct-ai-edit';
 }
 
 export function fitArtworkQuad(quad, artworkAspectRatio, options = {}) {
