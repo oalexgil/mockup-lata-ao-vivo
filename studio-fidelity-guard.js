@@ -107,8 +107,8 @@ function quadPath(ctx, quad) {
   ctx.closePath();
 }
 
-function addConservativeSceneLight(ctx, sceneCanvas, quad, preserveLight) {
-  const light = Math.max(0, Math.min(0.18, Number(preserveLight) || 0));
+function addConservativeSceneLight(ctx, sceneCanvas, quad, preserveLight, maxLight = 0.18) {
+  const light = Math.max(0, Math.min(maxLight, Number(preserveLight) || 0));
   if (light <= 0) return;
   ctx.save();
   quadPath(ctx, quad);
@@ -132,7 +132,7 @@ function normalizeTargetQuad(target, width, height) {
   return points.every((point) => Number.isFinite(point.x) && Number.isFinite(point.y)) ? points : null;
 }
 
-async function deterministicExactResponse(body) {
+async function deterministicFidelityResponse(body, strategy = 'deterministic-exact') {
   const sceneCanvas = $('display');
   const artworkFile = $('brandFiles')?.files?.[0];
   if (!sceneCanvas?.width || !sceneCanvas?.height || !artworkFile) {
@@ -170,16 +170,17 @@ async function deterministicExactResponse(body) {
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(sceneCanvas, 0, 0);
   warpOriginalArtwork(ctx, artwork, fittedQuad);
-  addConservativeSceneLight(ctx, sceneCanvas, fittedQuad, plan?.integration?.preserveLight);
+  const lightCap = strategy === 'deterministic-balanced' ? 0.32 : 0.18;
+  addConservativeSceneLight(ctx, sceneCanvas, fittedQuad, plan?.integration?.preserveLight, lightCap);
 
   return {
     imageDataUrl: output.toDataURL('image/png'),
     provider: 'mockup-vision-local-fidelity-guard',
     model: plan?.model || null,
-    mode: 'deterministic-exact',
+    mode: strategy,
     artworkReferenceUsed: true,
     artworkOriginalPixelsUsed: true,
-    fidelity: 'exact',
+    fidelity: settings.fidelityMode,
     fidelityControls: settings,
     surface: target?.label || 'validated surface',
     surfaceValidated: true,
@@ -195,13 +196,14 @@ window.fetch = async (input, init = {}) => {
   }
 
   const settings = fidelitySettings();
-  if (fidelityApplicationStrategy(settings) !== 'deterministic-exact') {
+  const strategy = fidelityApplicationStrategy(settings);
+  if (!strategy.startsWith('deterministic-')) {
     return nextFetch(input, init);
   }
 
   try {
     const body = JSON.parse(init.body);
-    const result = await deterministicExactResponse(body);
+    const result = await deterministicFidelityResponse(body, strategy);
     return new Response(JSON.stringify(result), {
       status: 200,
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
@@ -210,7 +212,7 @@ window.fetch = async (input, init = {}) => {
     console.warn('[fidelity-guard] aplicação exata bloqueada para evitar deformação destrutiva', error);
     return new Response(JSON.stringify({
       error: `Fidelidade máxima protegeu a arte de uma aplicação insegura: ${error.message}`,
-      mode: 'deterministic-exact-blocked',
+      mode: `${strategy}-blocked`,
     }), {
       status: 422,
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
@@ -220,9 +222,12 @@ window.fetch = async (input, init = {}) => {
 
 document.addEventListener('mockup:direct-rendered', (event) => {
   const result = event.detail?.result;
-  if (result?.mode !== 'deterministic-exact') return;
+  if (!String(result?.mode || '').startsWith('deterministic-')) return;
   const status = $('autoApplyFlowStatus');
   if (!status) return;
-  status.textContent = 'Fidelidade máxima: a arte original foi aplicada por geometria determinística, com proporção e margens seguras. A IA escolheu a superfície, mas não redesenhou letras, logos ou ilustrações.';
+  const balanced = result.mode === 'deterministic-balanced';
+  status.textContent = balanced
+    ? 'Equilibrado: a arte original foi aplicada localmente, sem redesenho. A integração de luz foi moderada, mantendo letras, logos e ilustrações intactos.'
+    : 'Fidelidade estrita: a arte original foi aplicada por geometria determinística, com proporção e margens seguras. A IA escolheu a superfície, mas não redesenhou letras, logos ou ilustrações.';
   status.className = 'auto-status ok';
 });
