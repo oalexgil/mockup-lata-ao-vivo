@@ -186,14 +186,24 @@ function extractImage(payload) {
   return payload?.result?.image || payload?.image || null;
 }
 
+export function isProviderSafetyBlockMessage(message = '') {
+  return /output has been flagged|input image combination|safety (?:filter|check|policy)|content (?:was )?flagged|moderation/i.test(String(message || ''));
+}
+
 function cloudflareError(payload, status) {
   const errors = Array.isArray(payload?.errors) ? payload.errors : [];
-  const message = errors.map((item) => item?.message).filter(Boolean).join(' | ')
+  const providerMessage = errors.map((item) => item?.message).filter(Boolean).join(' | ')
     || payload?.error?.message
     || payload?.message
     || `Cloudflare mockup editor ${status}`;
-  const error = new Error(message);
-  error.statusCode = status >= 500 ? 502 : status;
+  const safetyBlocked = isProviderSafetyBlockMessage(providerMessage);
+  const error = new Error(
+    safetyBlocked
+      ? 'O editor generativo recusou esta combinação de cena e arte. O Mockup Vision pode continuar pela aplicação local sem regenerar a arte.'
+      : providerMessage
+  );
+  error.statusCode = safetyBlocked ? 422 : (status >= 500 ? 502 : status);
+  error.code = safetyBlocked ? 'PROVIDER_SAFETY_BLOCK' : 'CLOUDFLARE_EDIT_FAILED';
   return error;
 }
 
