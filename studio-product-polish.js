@@ -127,6 +127,10 @@ function polishCopy() {
 
 function friendlyApiMessage(detail = {}) {
   const raw = String(detail.message || 'Não foi possível concluir a operação.');
+  if (/output has been flagged|input image combination|content (?:was )?flagged|moderation|safety (?:filter|check|policy)/i.test(raw)
+      || detail.code === 'PROVIDER_SAFETY_BLOCK') {
+    return 'O editor generativo recusou esta combinação. O Mockup Vision continuará pelo modo local, preservando a arte original.';
+  }
   if (/3036|10[,.]?000\s*neurons|daily free allocation|workers paid/i.test(raw)) {
     return 'O limite diário do provedor foi atingido. Seu trabalho local permanece salvo nesta sessão.';
   }
