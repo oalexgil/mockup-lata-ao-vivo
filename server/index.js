@@ -344,7 +344,10 @@ const server = http.createServer(async (req, res) => {
   } catch (error) {
     const status = Number(error?.statusCode) || 500;
     if (status >= 500) console.error(error);
-    return sendJson(res, status, { error: error?.message || 'Erro interno.' });
+    return sendJson(res, status, {
+      error: error?.message || 'Erro interno.',
+      code: error?.code || undefined,
+    });
   }
 });
 
