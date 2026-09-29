@@ -67,7 +67,7 @@ function ensureFlowControls() {
         <button id="approveSceneBtn" class="primary">Aprovar mockup</button>
         <button id="reopenSceneBtn" class="secondary hidden">Alterar cena</button>
       </div>`;
-    const anchor = $('iterationBox') || $('versions');
+    const anchor = $('sceneSourcePanels') || $('iterationBox') || $('versions');
     anchor?.insertAdjacentElement('afterend', box);
   }
 
