@@ -386,7 +386,10 @@ async function applySingleWithAI() {
   if (advanced) advanced.disabled = true;
   resetApplicationState('direct');
   U.mappingStatus = 'direct-rendering';
-  const creativeMode = $('mockupFidelityMode')?.value === 'integrated';
+
+  const fidelityMode = $('mockupFidelityMode')?.value || 'exact';
+  const creativeMode = fidelityMode === 'integrated';
+  let fallbackToSurfaceMapping = false;
   setFlowStatus(creativeMode
     ? 'A IA está integrando a arte de forma criativa na cena…'
     : 'Localizando a superfície para aplicar os pixels da arte original…');
@@ -395,23 +398,36 @@ async function applySingleWithAI() {
     await prepareApplication();
     const artwork = U.artworks[0];
     const instruction = String($('mockupApplyInstruction')?.value || '').trim();
-    const sceneReference = resizeSourceToDataUrl(baseCanvas, 480, 'image/jpeg', 0.9);
-    const artworkReference = resizeSourceToDataUrl(artwork.image, 480, 'image/png');
+    let result;
 
-    const response = await fetch('/api/render-mockup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sceneImageDataUrl: sceneReference,
-        artworkImageDataUrl: artworkReference,
-        instruction,
-        outputWidth: baseCanvas.width,
-        outputHeight: baseCanvas.height,
-      }),
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result?.error || `render ${response.status}`);
-    if (!result?.imageDataUrl) throw new Error('A IA não retornou a imagem final.');
+    if (!creativeMode && window.MockupVisionFidelityGuard?.renderDeterministic) {
+      result = await window.MockupVisionFidelityGuard.renderDeterministic({ instruction });
+    } else {
+      const sceneReference = resizeSourceToDataUrl(baseCanvas, 480, 'image/jpeg', 0.9);
+      const artworkReference = resizeSourceToDataUrl(artwork.image, 480, 'image/png');
+      const response = await fetch('/api/render-mockup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sceneImageDataUrl: sceneReference,
+          artworkImageDataUrl: artworkReference,
+          instruction,
+          outputWidth: baseCanvas.width,
+          outputHeight: baseCanvas.height,
+          fidelityMode,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const error = new Error(payload?.error || `render ${response.status}`);
+        error.code = payload?.code || '';
+        error.status = response.status;
+        throw error;
+      }
+      result = payload;
+    }
+
+    if (!result?.imageDataUrl) throw new Error('O sistema não retornou a imagem final.');
 
     U.directRenderImage = await loadImage(result.imageDataUrl);
     U.directRenderReady = true;
@@ -420,23 +436,34 @@ async function applySingleWithAI() {
     U.finalized = true;
     renderOverlay({ guides: false });
     mappingList();
+
     const deterministic = String(result?.mode || '').startsWith('deterministic-');
     setFlowStatus(
       deterministic
-        ? 'Arte original aplicada sem regeneração. Revise o encaixe e, se necessário, ajuste a superfície.'
+        ? 'Arte original aplicada localmente, sem regeneração. Revise o encaixe e ajuste a superfície se necessário.'
         : 'Mockup gerado em modo criativo. Confira letras, logos e detalhes finos antes de salvar.',
       'ok',
     );
     document.dispatchEvent(new CustomEvent('mockup:direct-rendered', { detail: { result } }));
   } catch (error) {
     console.warn(error);
-    resetApplicationState('direct');
-    setFlowStatus(`Não foi possível aplicar a arte: ${error.message}. Use Revisar superfícies para marcar ou corrigir os quatro cantos.`, 'warn');
+    resetApplicationState('advanced');
+    fallbackToSurfaceMapping = true;
+    const safetyBlocked = error?.code === 'PROVIDER_SAFETY_BLOCK'
+      || /output has been flagged|input image combination|content (?:was )?flagged|moderation|safety (?:filter|check|policy)/i.test(String(error?.message || ''));
+    setFlowStatus(
+      safetyBlocked
+        ? 'O editor generativo recusou esta combinação. Mudando automaticamente para aplicação local, sem regenerar sua arte…'
+        : 'O render direto não concluiu. Tentando automaticamente a aplicação local por superfície…',
+      'warn',
+    );
   } finally {
     if (primary) primary.disabled = false;
     if (advanced) advanced.disabled = false;
     setFinalizeAvailability();
   }
+
+  if (fallbackToSurfaceMapping) return analyzeLayout();
 }
 
 async function analyzeLayout() {

@@ -46,3 +46,16 @@ test('direct render is exportable locally without surface validation', () => {
   assert.match(studio, /mockup-vision\.png/);
   assert.match(studio, /toDataURL\(['"]image\/png['"]\)/);
 });
+
+
+test('recommended fidelity modes call the deterministic compositor explicitly instead of relying on generative edit', () => {
+  assert.match(studio, /MockupVisionFidelityGuard\?\.renderDeterministic/);
+  assert.match(studio, /if \(!creativeMode/);
+  assert.match(studio, /fidelityMode === ['"]integrated['"]/);
+});
+
+test('direct render failure automatically falls back to surface mapping', () => {
+  assert.match(studio, /fallbackToSurfaceMapping = true/);
+  assert.match(studio, /return analyzeLayout\(\)/);
+  assert.match(studio, /PROVIDER_SAFETY_BLOCK/);
+});
